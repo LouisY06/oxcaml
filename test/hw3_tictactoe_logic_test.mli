@@ -1,6 +1,2 @@
-open! Core
-open Tictactoe_logic_library
-open Hw2_tictactoe_logic
-
-val ok_exn : ('a, 'b) result -> 'a
-val pretty_print_board : Game_state.t -> unit
+(* Test framework for comprehensive game logic testing *)
+val run_all_tests : unit -> unit
