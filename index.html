@@ -235,6 +235,7 @@
             
             // Check if both players are stuck
             if (areBothPlayersStuck()) {
+                logMessage("DEBUG: Calling changeMiddleCards from player move");
                 changeMiddleCards();
             }
             
@@ -296,6 +297,7 @@
             
             // Check if both players are stuck
             if (areBothPlayersStuck()) {
+                logMessage("DEBUG: Calling changeMiddleCards from AI move");
                 changeMiddleCards();
             }
             
@@ -334,11 +336,17 @@
                 canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
             );
             
-            return !player1CanPlay && !player2CanPlay;
+            const stuck = !player1CanPlay && !player2CanPlay;
+            if (stuck) {
+                logMessage(`DEBUG: Both players stuck! Player1 can play: ${player1CanPlay}, Player2 can play: ${player2CanPlay}`);
+            }
+            return stuck;
         }
 
         // Change middle cards when both players are stuck
         function changeMiddleCards() {
+            logMessage(`DEBUG: changeMiddleCards called. Player1Side: ${gameState.player1Side.length}, Player2Side: ${gameState.player2Side.length}`);
+            
             if (gameState.player1Side.length === 0 && gameState.player2Side.length === 0) {
                 logMessage("No side cards available to change middle cards!");
                 return false;
@@ -373,8 +381,6 @@
             gameState.player1Hand.push(card);
             logMessage(`You drew ${cardToDisplay(card)}`);
             
-            // Auto-draw to maintain 5 cards
-            autoDrawCards(1);
             updateDisplay();
         }
 
@@ -394,8 +400,6 @@
             gameState.player2Hand.push(card);
             logMessage(`AI drew a card`);
             
-            // Auto-draw to maintain 5 cards
-            autoDrawCards(2);
             updateDisplay();
         }
 
