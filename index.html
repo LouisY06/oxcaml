@@ -16,8 +16,6 @@
             <div class="game-status" id="gameStatus">Click 'New Game' to start!</div>
             <div class="game-controls">
                 <button id="newGameBtn">New Game</button>
-                <button id="drawCardBtn">Draw Card</button>
-                <button id="aiDrawBtn">AI Draw Card</button>
             </div>
         </div>
         
@@ -66,7 +64,7 @@
                 <strong>Speed Rules:</strong> Click cards to play them! Cards must be ±1 rank from pile top. Aces are wild (King or 2).
             </div>
             <div class="info-item">
-                <strong>Setup:</strong> 20 cards each (15 draw + 5 hand), 2 random center cards, 2 side stacks
+                <strong>Setup:</strong> 20 cards each (15 draw + 5 hand), 2 random center cards
             </div>
             <div class="info-item">
                 <strong>Game Log:</strong> <div id="gameLog"></div>
@@ -81,12 +79,8 @@
             player2Hand: [],
             player1Draw: [],
             player2Draw: [],
-            player1Side: [],
-            player2Side: [],
             pile1: null,
             pile2: null,
-            sideStack1: [],
-            sideStack2: [],
             gameStarted: false,
             gameOver: false,
             winner: null,
@@ -357,44 +351,6 @@
             }, 3000);
         }
 
-        // Draw card for player
-        function drawCard() {
-            if (gameState.gameOver || gameState.player1Draw.length === 0) {
-                logMessage("No cards to draw!");
-                return;
-            }
-            
-            if (gameState.player1Hand.length >= 5) {
-                logMessage("You already have 5 cards! Cannot draw more.");
-                return;
-            }
-            
-            const card = gameState.player1Draw.shift();
-            gameState.player1Hand.push(card);
-            logMessage(`You drew ${cardToDisplay(card)}`);
-            
-            updateDisplay();
-        }
-
-        // Draw card for AI
-        function aiDrawCard() {
-            if (gameState.gameOver || gameState.player2Draw.length === 0) {
-                logMessage("AI has no cards to draw!");
-                return;
-            }
-            
-            if (gameState.player2Hand.length >= 5) {
-                logMessage("AI already has 5 cards! Cannot draw more.");
-                return;
-            }
-            
-            const card = gameState.player2Draw.shift();
-            gameState.player2Hand.push(card);
-            logMessage(`AI drew a card`);
-            
-            updateDisplay();
-        }
-
         // Convert card to display string
         function cardToDisplay(card) {
             const suitSymbols = { 'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠' };
@@ -480,8 +436,6 @@
 
         // Event listeners
         document.getElementById('newGameBtn').onclick = newGame;
-        document.getElementById('drawCardBtn').onclick = drawCard;
-        document.getElementById('aiDrawBtn').onclick = aiDrawCard;
 
         // Initialize the game
         logMessage("Click 'New Game' to start playing Speed!");
