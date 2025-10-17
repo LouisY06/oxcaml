@@ -1,18 +1,98 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TicTacToe</title>
-    <meta name="description" content="TicTacToe game">
+    <title>Speed Card Game</title>
+    <meta name="description" content="Speed card game - Interactive web version">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <link rel="stylesheet" type="text/css" href="hw5_html_css/hw5_static_state.css">
+    <link rel="stylesheet" type="text/css" href="hw5_html_css/speed_game.css">
     <link rel="icon" href="data:,">
-    <script defer src="generated_js/tictactoe_ui.bc.js"></script>
 </head>
 
 <body>
-    <div id="app"></div>
-</body>
+    <div class="game-container">
+        <div class="game-header">
+            <h1>Speed Card Game</h1>
+            <div class="game-status">Choose a Game State to View</div>
+        </div>
+        
+        <div class="game-links">
+            <a href="hw5_html_css/speed_game_early.html" class="game-link">
+                <h3>Early Game State</h3>
+                <p>Empty piles, full hands and stocks</p>
+            </a>
+            <a href="hw5_html_css/speed_game_mid.html" class="game-link">
+                <h3>Mid Game State</h3>
+                <p>Cards on both piles, reduced stocks</p>
+            </a>
+            <a href="hw5_html_css/speed_game_late.html" class="game-link">
+                <h3>Late Game State</h3>
+                <p>Few cards remaining, strategic play</p>
+            </a>
+        </div>
 
+        <div class="game-info">
+            <div class="info-item">
+                <strong>Game Rules:</strong> Play cards that are one rank higher or lower than the top card on either pile.
+            </div>
+            <div class="info-item">
+                <strong>Objective:</strong> Be the first player to get rid of all your cards.
+            </div>
+            <div class="info-item">
+                <strong>Features:</strong> Responsive design works on phone, tablet, and desktop.
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .game-links {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+
+        .game-link {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            text-decoration: none;
+            color: #333;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            min-width: 200px;
+            text-align: center;
+        }
+
+        .game-link:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-color: #007bff;
+        }
+
+        .game-link h3 {
+            margin: 0 0 10px 0;
+            color: #007bff;
+        }
+
+        .game-link p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        @media (max-width: 480px) {
+            .game-links {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .game-link {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</body>
 </html>
