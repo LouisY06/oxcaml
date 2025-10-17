@@ -232,6 +232,12 @@
             }
 
             gameState.selectedCard = null;
+            
+            // Check if both players are stuck
+            if (areBothPlayersStuck()) {
+                changeMiddleCards();
+            }
+            
             updateDisplay();
         }
 
@@ -288,6 +294,11 @@
                 }
             }
             
+            // Check if both players are stuck
+            if (areBothPlayersStuck()) {
+                changeMiddleCards();
+            }
+            
             updateDisplay();
             
             // Continue AI loop after a delay
@@ -314,10 +325,47 @@
             }
         }
 
+        // Check if both players are stuck (no valid moves)
+        function areBothPlayersStuck() {
+            const player1CanPlay = gameState.player1Hand.some(card => 
+                canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
+            );
+            const player2CanPlay = gameState.player2Hand.some(card => 
+                canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
+            );
+            
+            return !player1CanPlay && !player2CanPlay;
+        }
+
+        // Change middle cards when both players are stuck
+        function changeMiddleCards() {
+            if (gameState.player1Side.length === 0 && gameState.player2Side.length === 0) {
+                logMessage("No side cards available to change middle cards!");
+                return false;
+            }
+            
+            // Take cards from side stacks
+            const newCard1 = gameState.player1Side.length > 0 ? gameState.player1Side.shift() : gameState.player2Side.shift();
+            const newCard2 = gameState.player2Side.length > 0 ? gameState.player2Side.shift() : gameState.player1Side.shift();
+            
+            // Replace middle cards
+            gameState.pile1 = newCard1;
+            gameState.pile2 = newCard2;
+            
+            logMessage(`Both players stuck! Changed middle cards to: ${cardToDisplay(newCard1)} and ${cardToDisplay(newCard2)}`);
+            updateDisplay();
+            return true;
+        }
+
         // Draw card for player
         function drawCard() {
             if (gameState.gameOver || gameState.player1Draw.length === 0) {
                 logMessage("No cards to draw!");
+                return;
+            }
+            
+            if (gameState.player1Hand.length >= 5) {
+                logMessage("You already have 5 cards! Cannot draw more.");
                 return;
             }
             
@@ -334,6 +382,11 @@
         function aiDrawCard() {
             if (gameState.gameOver || gameState.player2Draw.length === 0) {
                 logMessage("AI has no cards to draw!");
+                return;
+            }
+            
+            if (gameState.player2Hand.length >= 5) {
+                logMessage("AI already has 5 cards! Cannot draw more.");
                 return;
             }
             
