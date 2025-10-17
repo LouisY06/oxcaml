@@ -1,6 +1,6 @@
 (executables
  (modes js)
- (names tictactoe_ui)
- (libraries bonsai bonsai_web core tictactoe_logic_library)
+ (names hw6_speed_game_ui)
+ (libraries bonsai bonsai_web core speed_logic_library)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))

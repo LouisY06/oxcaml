@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Speed Card Game - Mid Game State</title>
+    <meta name="description" content="Speed card game visualization - Mid game state">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="hw5_speed_game.css">
+    <link rel="icon" href="data:,">
+</head>
+
+<body>
+    <div class="game-container">
+        <div class="game-header">
+            <h1>Speed Card Game</h1>
+            <div class="game-status">Mid Game - Player 2's Turn</div>
+        </div>
+        
+        <div class="game-board">
+            <!-- Player 2's area (top) -->
+            <div class="player-area player2-area">
+                <div class="player-label">Player 2 (Current)</div>
+                <div class="hand">
+                    <div class="card spades four">4♠</div>
+                    <div class="card hearts six">6♥</div>
+                    <div class="card diamonds eight">8♦</div>
+                    <div class="card clubs jack">J♣</div>
+                    <div class="card face-down">🂠</div>
+                </div>
+                <div class="stock-pile">
+                    <div class="stock-label">Stock: 15 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+            </div>
+
+            <!-- Central playing area -->
+            <div class="center-area">
+                <div class="pile-area">
+                    <div class="pile pile1">
+                        <div class="pile-label">Pile 1</div>
+                        <div class="card hearts five">5♥</div>
+                    </div>
+                    <div class="pile pile2">
+                        <div class="pile-label">Pile 2</div>
+                        <div class="card spades ten">10♠</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player 1's area (bottom) -->
+            <div class="player-area player1-area">
+                <div class="player-label">Player 1</div>
+                <div class="hand">
+                    <div class="card clubs two">2♣</div>
+                    <div class="card diamonds nine">9♦</div>
+                    <div class="card hearts queen">Q♥</div>
+                    <div class="card spades king">K♠</div>
+                    <div class="card face-down">🂠</div>
+                </div>
+                <div class="stock-pile">
+                    <div class="stock-label">Stock: 18 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-info">
+            <div class="info-item">
+                <strong>Game Rules:</strong> Play cards that are one rank higher or lower than the top card on either pile.
+            </div>
+            <div class="info-item">
+                <strong>Available Moves:</strong> Player 2 can play 4♠ or 6♥ on pile 1 (5♥), or 9♦ on pile 2 (10♠).
+            </div>
+        </div>
+    </div>
+</body>
+</html>

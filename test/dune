@@ -1,6 +1,13 @@
-(library
- (libraries core tictactoe_logic_library)
- (name tictactoe_test_library)
- (inline_tests)
+(executable
+ (name hw3_speed_logic_test)
+ (modules hw3_speed_logic_test)
+ (libraries core speed_logic_library)
+ (preprocess
+  (pps ppx_jane)))
+
+(executable
+ (name hw4_speed_alpha_beta_test)
+ (modules hw4_speed_alpha_beta_test)
+ (libraries core speed_logic_library)
  (preprocess
   (pps ppx_jane)))

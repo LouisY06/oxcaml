@@ -1,32 +1,84 @@
 open! Core
 
-type player_kind =
-  | X
-  | O
+(* Card representation for Speed card game *)
+module Card : sig
+  type suit = Hearts | Diamonds | Clubs | Spades
+  [@@deriving sexp, compare, equal]
 
-type cell_position =
-  { row : int
-  ; column : int
+  type rank = 
+    | Ace | Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten
+    | Jack | Queen | King
+  [@@deriving sexp, compare, equal]
+
+  type t = { suit : suit; rank : rank }
+  [@@deriving sexp, compare, equal]
+
+  val rank_value : rank -> int
+  val can_play_on : t -> t -> bool
+  val to_string : t -> string
+end
+
+(* Player representation *)
+module Player : sig
+  type t = 
+    | Player1 
+    | Player2
+  [@@deriving sexp, compare, equal]
+
+  val opposite : t -> t
+end
+
+(* Move types *)
+module Move : sig
+  type t =
+    | Play_card of { card : Card.t; pile : int }  (* pile: 0 or 1 *)
+    | Draw_cards  (* Draw from stock pile *)
+  [@@deriving sexp, compare]
+end
+
+(* Game state for Speed card game *)
+module Game_state : sig
+  type t = {
+    (* Player hands - each player has 5 cards in hand *)
+    player1_hand : Card.t list;
+    player2_hand : Card.t list;
+    
+    (* Central piles - 2 piles where cards are played *)
+    pile1 : Card.t option;  (* Top card of pile 1 *)
+    pile2 : Card.t option;  (* Top card of pile 2 *)
+    
+    (* Stock piles - each player has a stock pile to draw from *)
+    player1_stock : Card.t list;
+    player2_stock : Card.t list;
+    
+    (* Current player *)
+    current_player : Player.t;
+    
+    (* Game status *)
+    game_over : bool;
+    winner : Player.t option;
   }
+  [@@deriving sexp, compare, equal]
 
-type decision =
-  | In_progress of { whose_turn : player_kind }
-  | Winner of player_kind
-  | Stalemate
+  module Move_error : sig
+    type t =
+      | Game_is_over
+      | Not_your_turn
+      | Card_not_in_hand
+      | Invalid_play  (* Card cannot be played on the specified pile *)
+      | Empty_pile    (* Trying to play on empty pile *)
+      | No_cards_to_draw
+    [@@deriving sexp, compare]
+  end
 
-type game_state =
-  { board : (cell_position * player_kind) list
-  ; rows : int
-  ; columns : int
-  ; winning_sequence_length : int
-  ; decision : decision
-  }
+  val create : unit -> t
+  val make_move : t -> Move.t -> (t, Move_error.t) Result.t
+  val get_all_moves : t -> Move.t list
+  val to_string : t -> string
+end
 
-type move = cell_position
-
-val initial_state : game_state
-val move_at_0x0 : move
-val state_after_move_at_0x0 : game_state
-val before_terminal_state : game_state
-val move_to_terminal_state : move
-val terminal_state : game_state
+(* Example values for testing *)
+val initial_state : Game_state.t
+val example_move : Move.t
+val example_draw_move : Move.t
+val test_game : unit -> unit
