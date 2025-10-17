@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Card Game</title>
-    <meta name="description" content="Speed card game - Interactive web version">
+    <title>Speed Card Game - Interactive</title>
+    <meta name="description" content="Interactive Speed card game with AI opponent">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <link rel="stylesheet" type="text/css" href="hw5_html_css/speed_game.css">
+    <link rel="stylesheet" type="text/css" href="hw5_html_css/hw5_speed_game.css">
     <link rel="icon" href="data:,">
 </head>
 
@@ -13,22 +13,52 @@
     <div class="game-container">
         <div class="game-header">
             <h1>Speed Card Game</h1>
-            <div class="game-status">Choose a Game State to View</div>
+            <div class="game-status" id="gameStatus">Player 1's Turn</div>
+            <div class="game-controls">
+                <button id="newGameBtn">New Game</button>
+                <button id="aiMoveBtn">AI Move</button>
+                <button id="drawCardsBtn">Draw Cards</button>
+            </div>
         </div>
         
-        <div class="game-links">
-            <a href="hw5_html_css/hw5_speed_game_early.html" class="game-link">
-                <h3>Early Game State</h3>
-                <p>Empty piles, full hands and stocks</p>
-            </a>
-            <a href="hw5_html_css/hw5_speed_game_mid.html" class="game-link">
-                <h3>Mid Game State</h3>
-                <p>Cards on both piles, reduced stocks</p>
-            </a>
-            <a href="hw5_html_css/hw5_speed_game_late.html" class="game-link">
-                <h3>Late Game State</h3>
-                <p>Few cards remaining, strategic play</p>
-            </a>
+        <div class="game-board">
+            <!-- Player 2's area (top) - AI -->
+            <div class="player-area player2-area">
+                <div class="player-label">AI Player</div>
+                <div class="hand" id="aiHand">
+                    <!-- AI cards will be populated here -->
+                </div>
+                <div class="stock-pile">
+                    <div class="stock-label" id="aiStockLabel">Stock: 21 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+            </div>
+
+            <!-- Central playing area -->
+            <div class="center-area">
+                <div class="pile-area">
+                    <div class="pile pile1" id="pile1" onclick="playCard(0)">
+                        <div class="pile-label">Pile 1</div>
+                        <div class="card empty-pile" id="pile1Card">Empty</div>
+                    </div>
+                    <div class="pile pile2" id="pile2" onclick="playCard(1)">
+                        <div class="pile-label">Pile 2</div>
+                        <div class="card empty-pile" id="pile2Card">Empty</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player 1's area (bottom) - Human -->
+            <div class="player-area player1-area">
+                <div class="player-label">You (Player 1)</div>
+                <div class="hand" id="playerHand">
+                    <!-- Player cards will be populated here -->
+                </div>
+                <div class="stock-pile">
+                    <div class="stock-label" id="playerStockLabel">Stock: 21 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+            </div>
         </div>
 
         <div class="game-info">
@@ -36,62 +66,373 @@
                 <strong>Game Rules:</strong> Play cards that are one rank higher or lower than the top card on either pile.
             </div>
             <div class="info-item">
-                <strong>Objective:</strong> Be the first player to get rid of all your cards.
+                <strong>Available Moves:</strong> <span id="availableMoves">Any card on empty piles</span>
             </div>
             <div class="info-item">
-                <strong>Features:</strong> Responsive design works on phone, tablet, and desktop.
+                <strong>Game Log:</strong> <div id="gameLog"></div>
             </div>
         </div>
     </div>
 
-    <style>
-        .game-links {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin: 30px 0;
+    <script>
+        // Game state
+        let gameState = {
+            player1Hand: [],
+            player2Hand: [],
+            pile1: null,
+            pile2: null,
+            player1Stock: [],
+            player2Stock: [],
+            currentPlayer: 1,
+            gameOver: false,
+            winner: null
+        };
+
+        // Card definitions
+        const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+        const ranks = ['Ace', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Jack', 'Queen', 'King'];
+        const rankValues = {
+            'Ace': 1, 'Two': 2, 'Three': 3, 'Four': 4, 'Five': 5, 'Six': 6, 'Seven': 7,
+            'Eight': 8, 'Nine': 9, 'Ten': 10, 'Jack': 11, 'Queen': 12, 'King': 13
+        };
+
+        // Create a standard deck
+        function createDeck() {
+            const deck = [];
+            for (let suit of suits) {
+                for (let rank of ranks) {
+                    deck.push({ suit, rank, value: rankValues[rank] });
+                }
+            }
+            return shuffleDeck(deck);
         }
 
-        .game-link {
-            background: white;
-            border: 2px solid #e9ecef;
-            border-radius: 15px;
-            padding: 20px;
-            text-decoration: none;
-            color: #333;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            min-width: 200px;
-            text-align: center;
+        // Shuffle deck
+        function shuffleDeck(deck) {
+            const shuffled = [...deck];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
         }
 
-        .game-link:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            border-color: #007bff;
+        // Initialize new game
+        function newGame() {
+            const deck = createDeck();
+            
+            gameState = {
+                player1Hand: deck.slice(0, 5),
+                player2Hand: deck.slice(5, 10),
+                pile1: null,
+                pile2: null,
+                player1Stock: deck.slice(10, 31),
+                player2Stock: deck.slice(31, 52),
+                currentPlayer: 1,
+                gameOver: false,
+                winner: null
+            };
+
+            updateDisplay();
+            logMessage("New game started! You go first.");
         }
 
-        .game-link h3 {
-            margin: 0 0 10px 0;
-            color: #007bff;
+        // Check if a card can be played on a pile
+        function canPlayCard(card, pileCard) {
+            if (!pileCard) return true; // Can play any card on empty pile
+            return Math.abs(card.value - pileCard.value) === 1;
         }
 
-        .game-link p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        @media (max-width: 480px) {
-            .game-links {
-                flex-direction: column;
-                align-items: center;
+        // Get available moves for current player
+        function getAvailableMoves() {
+            const moves = [];
+            const hand = gameState.currentPlayer === 1 ? gameState.player1Hand : gameState.player2Hand;
+            
+            for (let i = 0; i < hand.length; i++) {
+                const card = hand[i];
+                if (canPlayCard(card, gameState.pile1)) {
+                    moves.push({ type: 'play', cardIndex: i, pile: 0 });
+                }
+                if (canPlayCard(card, gameState.pile2)) {
+                    moves.push({ type: 'play', cardIndex: i, pile: 1 });
+                }
             }
             
-            .game-link {
-                width: 100%;
-                max-width: 300px;
+            return moves;
+        }
+
+        // Play a card
+        function playCard(pileIndex) {
+            if (gameState.currentPlayer !== 1 || gameState.gameOver) return;
+            
+            const moves = getAvailableMoves();
+            const validMove = moves.find(move => move.pile === pileIndex);
+            
+            if (!validMove) {
+                logMessage("Invalid move! Card cannot be played on that pile.");
+                return;
             }
+
+            const card = gameState.player1Hand[validMove.cardIndex];
+            gameState.player1Hand.splice(validMove.cardIndex, 1);
+            
+            if (pileIndex === 0) {
+                gameState.pile1 = card;
+            } else {
+                gameState.pile2 = card;
+            }
+
+            logMessage(`You played ${cardToDisplay(card)} on pile ${pileIndex + 1}`);
+            
+            // Check for win
+            if (gameState.player1Hand.length === 0 && gameState.player1Stock.length === 0) {
+                gameState.gameOver = true;
+                gameState.winner = 1;
+                logMessage("🎉 You win!");
+                updateDisplay();
+                return;
+            }
+
+            gameState.currentPlayer = 2;
+            updateDisplay();
+            
+            // AI move after a short delay
+            setTimeout(() => {
+                if (!gameState.gameOver) {
+                    aiMove();
+                }
+            }, 1000);
+        }
+
+        // AI move using simple strategy (simulating alpha-beta)
+        function aiMove() {
+            if (gameState.currentPlayer !== 2 || gameState.gameOver) return;
+            
+            const moves = getAvailableMoves();
+            if (moves.length === 0) {
+                // Try to draw cards
+                if (gameState.player2Stock.length > 0) {
+                    drawCards(2);
+                    return;
+                } else {
+                    gameState.gameOver = true;
+                    gameState.winner = 1;
+                    logMessage("AI has no moves. You win!");
+                    updateDisplay();
+                    return;
+                }
+            }
+
+            // Simple AI strategy: play the highest value card that can be played
+            let bestMove = moves[0];
+            let bestValue = 0;
+            
+            for (let move of moves) {
+                const card = gameState.player2Hand[move.cardIndex];
+                if (card.value > bestValue) {
+                    bestValue = card.value;
+                    bestMove = move;
+                }
+            }
+
+            const card = gameState.player2Hand[bestMove.cardIndex];
+            gameState.player2Hand.splice(bestMove.cardIndex, 1);
+            
+            if (bestMove.pile === 0) {
+                gameState.pile1 = card;
+            } else {
+                gameState.pile2 = card;
+            }
+
+            logMessage(`AI played ${cardToDisplay(card)} on pile ${bestMove.pile + 1}`);
+            
+            // Check for AI win
+            if (gameState.player2Hand.length === 0 && gameState.player2Stock.length === 0) {
+                gameState.gameOver = true;
+                gameState.winner = 2;
+                logMessage("🤖 AI wins!");
+                updateDisplay();
+                return;
+            }
+
+            gameState.currentPlayer = 1;
+            updateDisplay();
+        }
+
+        // Draw cards
+        function drawCards(player) {
+            const hand = player === 1 ? gameState.player1Hand : gameState.player2Hand;
+            const stock = player === 1 ? gameState.player1Stock : gameState.player2Stock;
+            
+            if (stock.length === 0) {
+                logMessage("No cards to draw!");
+                return;
+            }
+
+            const cardsToDraw = Math.min(5 - hand.length, stock.length);
+            const drawnCards = stock.splice(0, cardsToDraw);
+            hand.push(...drawnCards);
+
+            logMessage(`Player ${player} drew ${cardsToDraw} cards`);
+            updateDisplay();
+        }
+
+        // Convert card to display string
+        function cardToDisplay(card) {
+            const suitSymbols = { 'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠' };
+            const rankSymbols = { 'Ace': 'A', 'Two': '2', 'Three': '3', 'Four': '4', 'Five': '5', 'Six': '6', 'Seven': '7', 'Eight': '8', 'Nine': '9', 'Ten': '10', 'Jack': 'J', 'Queen': 'Q', 'King': 'K' };
+            return rankSymbols[card.rank] + suitSymbols[card.suit];
+        }
+
+        // Update the display
+        function updateDisplay() {
+            // Update game status
+            const statusEl = document.getElementById('gameStatus');
+            if (gameState.gameOver) {
+                statusEl.textContent = gameState.winner === 1 ? 'You Win!' : 'AI Wins!';
+            } else {
+                statusEl.textContent = gameState.currentPlayer === 1 ? 'Your Turn' : 'AI Turn';
+            }
+
+            // Update player hand
+            const playerHandEl = document.getElementById('playerHand');
+            playerHandEl.innerHTML = '';
+            gameState.player1Hand.forEach((card, index) => {
+                const cardEl = document.createElement('div');
+                cardEl.className = `card ${card.suit.toLowerCase()}`;
+                cardEl.textContent = cardToDisplay(card);
+                cardEl.onclick = () => {
+                    const moves = getAvailableMoves();
+                    const validMove = moves.find(move => move.cardIndex === index);
+                    if (validMove) {
+                        playCard(validMove.pile);
+                    }
+                };
+                playerHandEl.appendChild(cardEl);
+            });
+
+            // Update AI hand (face down)
+            const aiHandEl = document.getElementById('aiHand');
+            aiHandEl.innerHTML = '';
+            gameState.player2Hand.forEach(() => {
+                const cardEl = document.createElement('div');
+                cardEl.className = 'card face-down';
+                cardEl.textContent = '🂠';
+                aiHandEl.appendChild(cardEl);
+            });
+
+            // Update piles
+            const pile1El = document.getElementById('pile1Card');
+            const pile2El = document.getElementById('pile2Card');
+            
+            if (gameState.pile1) {
+                pile1El.className = `card ${gameState.pile1.suit.toLowerCase()}`;
+                pile1El.textContent = cardToDisplay(gameState.pile1);
+            } else {
+                pile1El.className = 'card empty-pile';
+                pile1El.textContent = 'Empty';
+            }
+
+            if (gameState.pile2) {
+                pile2El.className = `card ${gameState.pile2.suit.toLowerCase()}`;
+                pile2El.textContent = cardToDisplay(gameState.pile2);
+            } else {
+                pile2El.className = 'card empty-pile';
+                pile2El.textContent = 'Empty';
+            }
+
+            // Update stock counts
+            document.getElementById('playerStockLabel').textContent = `Stock: ${gameState.player1Stock.length} cards`;
+            document.getElementById('aiStockLabel').textContent = `Stock: ${gameState.player2Stock.length} cards`;
+
+            // Update available moves
+            const moves = getAvailableMoves();
+            const movesEl = document.getElementById('availableMoves');
+            if (moves.length === 0) {
+                movesEl.textContent = 'No valid moves - draw cards or game over';
+            } else {
+                movesEl.textContent = `${moves.length} valid moves available`;
+            }
+        }
+
+        // Log message
+        function logMessage(message) {
+            const logEl = document.getElementById('gameLog');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<div>[${time}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Event listeners
+        document.getElementById('newGameBtn').onclick = newGame;
+        document.getElementById('aiMoveBtn').onclick = () => {
+            if (gameState.currentPlayer === 2) {
+                aiMove();
+            }
+        };
+        document.getElementById('drawCardsBtn').onclick = () => {
+            if (gameState.currentPlayer === 1) {
+                drawCards(1);
+            }
+        };
+
+        // Initialize the game
+        newGame();
+    </script>
+
+    <style>
+        .game-controls {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .game-controls button {
+            padding: 8px 16px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .game-controls button:hover {
+            background: #f8f9fa;
+        }
+
+        .game-controls button:disabled {
+            background: #e9ecef;
+            cursor: not-allowed;
+        }
+
+        #gameLog {
+            max-height: 100px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+
+        .hand .card {
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .hand .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .pile {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .pile:hover {
+            background-color: rgba(0, 123, 255, 0.1);
         }
     </style>
 </body>
