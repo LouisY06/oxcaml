@@ -1,6 +1,8 @@
 open! Core
 
-(* Card representation *)
+(* Speed card game logic implementation *)
+(* This module contains the core game logic for the Speed card game *)
+
 module Card = struct
   type suit = Hearts | Diamonds | Clubs | Spades
   [@@deriving sexp, compare, equal]
@@ -35,7 +37,6 @@ module Card = struct
     rank_str ^ suit_str
 end
 
-(* Player representation *)
 module Player = struct
   type t = 
     | Player1 
@@ -47,7 +48,6 @@ module Player = struct
     | Player2 -> Player1
 end
 
-(* Move types *)
 module Move = struct
   type t =
     | Play_card of { card : Card.t; pile : int }  (* pile: 0 or 1 *)
@@ -55,7 +55,6 @@ module Move = struct
   [@@deriving sexp, compare]
 end
 
-(* Game state *)
 module Game_state = struct
   type t = {
     (* Player hands - each player has 5 cards in hand *)
@@ -299,8 +298,7 @@ module Game_state = struct
           | Player.Player1 -> game_state.player1_stock
           | Player.Player2 -> game_state.player2_stock
         in
-        let current_hand_size = List.length current_hand in
-        if not (List.is_empty current_stock) && current_hand_size < 5 then
+        if not (List.is_empty current_stock) then
           [Move.Draw_cards]
         else
           []

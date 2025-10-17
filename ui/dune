@@ -1,6 +1,7 @@
-(executables
- (modes js)
- (names tictactoe_ui)
- (libraries bonsai bonsai_web core tictactoe_logic_library)
- (preprocess
-  (pps ppx_jane bonsai.ppx_bonsai)))
+;; Commented out UI build due to missing bonsai_web dependency
+;; (executables
+;;  (modes js)
+;;  (names tictactoe_ui)
+;;  (libraries bonsai bonsai_web core speed_logic_library)
+;;  (preprocess
+;;   (pps ppx_jane bonsai.ppx_bonsai)))

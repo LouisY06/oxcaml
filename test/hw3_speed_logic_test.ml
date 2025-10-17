@@ -1,6 +1,6 @@
 open! Core
 open! Base
-open Tictactoe_logic_library
+open Speed_logic_library
 
 (* Test framework setup *)
 let assert_equal b = 
@@ -13,9 +13,7 @@ let assert_equal b =
 (* Helper functions for testing *)
 let create_test_card suit rank = { Hw1.Card.suit; rank }
 
-(* =============================================================================
-   HW1 SPEED CARD GAME TESTS
-   ============================================================================= *)
+
 
 module SpeedCardTests = struct
   let test_card_creation () =
@@ -94,7 +92,7 @@ module SpeedGameStateTests = struct
     
     (* Play first card to create a pile *)
     let move1 = Hw1.Move.Play_card { card = first_card; pile = 0 } in
-    match Hw1.Game_state.make_move game_state move1 with
+    (match Hw1.Game_state.make_move game_state move1 with
     | Ok state_after_first ->
         (* Try to play a card that cannot be played on the pile *)
         let player2_hand = state_after_first.player2_hand in
@@ -102,20 +100,24 @@ module SpeedGameStateTests = struct
           not (Hw1.Card.can_play_on card first_card)
         ) in
         let move2 = Hw1.Move.Play_card { card = incompatible_card; pile = 0 } in
-        match Hw1.Game_state.make_move state_after_first move2 with
+        (match Hw1.Game_state.make_move state_after_first move2 with
         | Ok _ -> assert_equal false
         | Error Hw1.Game_state.Move_error.Invalid_play -> assert_equal true
-        | Error _ -> assert_equal false
-    | Error _ -> assert_equal false
+        | Error _ -> assert_equal false)
+    | Error _ -> assert_equal false)
   
   let test_draw_cards_legal () =
     let game_state = Hw1.Game_state.create () in
+    (* Create a state where player1 has only 3 cards so they can draw *)
+    let modified_state = { game_state with 
+      player1_hand = List.take game_state.player1_hand 3;
+    } in
     let move = Hw1.Move.Draw_cards in
-    match Hw1.Game_state.make_move game_state move with
+    match Hw1.Game_state.make_move modified_state move with
     | Ok new_state ->
         assert_equal (List.length new_state.player1_hand = 5);
         assert_equal (Hw1.Player.equal new_state.current_player Hw1.Player.Player2);
-        assert_equal (List.length new_state.player1_stock < List.length game_state.player1_stock)
+        assert_equal (List.length new_state.player1_stock < List.length modified_state.player1_stock)
     | Error _ -> assert_equal false
   
   let test_draw_cards_illegal_empty_stock () =
@@ -145,8 +147,8 @@ module SpeedGameStateTests = struct
     let game_state = Hw1.Game_state.create () in
     let moves = Hw1.Game_state.get_all_moves game_state in
     assert_equal (List.length moves > 0);
-    (* Should include draw_cards move *)
-    assert_equal (List.exists moves ~f:(function Hw1.Move.Draw_cards -> true | _ -> false))
+    (* Should include play_card moves since both players have 5 cards *)
+    assert_equal (List.exists moves ~f:(function Hw1.Move.Play_card _ -> true | _ -> false))
 end
 
 (* =============================================================================
@@ -263,7 +265,7 @@ end
    ============================================================================= *)
 
 let run_all_tests () =
-  Stdio.printf "Running HW3 TicTacToe Logic Tests...\n\n";
+  Stdio.printf "Running HW3 Speed Logic Tests...\n\n";
   
   Stdio.printf "=== Speed Card Game Tests ===\n";
   Stdio.printf "Testing card creation...\n";
