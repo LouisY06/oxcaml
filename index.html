@@ -32,10 +32,6 @@
                     <div class="stock-label" id="aiStockLabel">Draw Pile: 15 cards</div>
                     <div class="card face-down stock">🂠</div>
                 </div>
-                <div class="side-stack">
-                    <div class="side-label">Side Stack: 5 cards</div>
-                    <div class="card face-down stock">🂠</div>
-                </div>
             </div>
 
             <!-- Central playing area -->
@@ -50,16 +46,6 @@
                         <div class="card" id="pile2Card">Empty</div>
                     </div>
                 </div>
-                <div class="side-stacks-area">
-                    <div class="side-stack-pile" id="sideStack1">
-                        <div class="side-label">Side Stack 1</div>
-                        <div class="card face-down stock">🂠</div>
-                    </div>
-                    <div class="side-stack-pile" id="sideStack2">
-                        <div class="side-label">Side Stack 2</div>
-                        <div class="card face-down stock">🂠</div>
-                    </div>
-                </div>
             </div>
 
             <!-- Player 1's area (bottom) - Human -->
@@ -70,10 +56,6 @@
                 </div>
                 <div class="stock-pile">
                     <div class="stock-label" id="playerStockLabel">Draw Pile: 15 cards</div>
-                    <div class="card face-down stock">🂠</div>
-                </div>
-                <div class="side-stack">
-                    <div class="side-label">Side Stack: 5 cards</div>
                     <div class="card face-down stock">🂠</div>
                 </div>
             </div>
@@ -149,12 +131,8 @@
                 player2Hand: deck.slice(5, 10),
                 player1Draw: deck.slice(10, 25),
                 player2Draw: deck.slice(25, 40),
-                player1Side: deck.slice(40, 45),
-                player2Side: deck.slice(45, 50),
-                pile1: deck[50], // Random center card 1
-                pile2: deck[51], // Random center card 2
-                sideStack1: [],
-                sideStack2: [],
+                pile1: deck[40], // Random center card 1
+                pile2: deck[41], // Random center card 2
                 gameStarted: true,
                 gameOver: false,
                 winner: null,
@@ -531,25 +509,6 @@
             background: #f8f9fa;
         }
 
-        .side-stack, .side-stack-pile {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 3px;
-            margin: 5px 0;
-        }
-
-        .side-label {
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-
-        .side-stacks-area {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-            margin-top: 10px;
-        }
 
         #gameLog {
             max-height: 100px;
