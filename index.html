@@ -175,6 +175,13 @@
                     aiPlayLoop();
                 }
             }, 1000);
+            
+            // Start continuous stuck checking
+            setTimeout(() => {
+                if (!gameState.gameOver) {
+                    continuousStuckCheck();
+                }
+            }, 2000);
         }
 
         // Check if a card can be played on a pile (with Ace wild rule)
@@ -337,8 +344,12 @@
             );
             
             const stuck = !player1CanPlay && !player2CanPlay;
+            logMessage(`DEBUG: Stuck check - Player1 can play: ${player1CanPlay}, Player2 can play: ${player2CanPlay}, Stuck: ${stuck}`);
+            
             if (stuck) {
-                logMessage(`DEBUG: Both players stuck! Player1 can play: ${player1CanPlay}, Player2 can play: ${player2CanPlay}`);
+                logMessage(`DEBUG: Both players stuck! Player1 hand: ${gameState.player1Hand.map(c => cardToDisplay(c)).join(', ')}`);
+                logMessage(`DEBUG: Both players stuck! Player2 hand: ${gameState.player2Hand.map(c => cardToDisplay(c)).join(', ')}`);
+                logMessage(`DEBUG: Both players stuck! Pile1: ${cardToDisplay(gameState.pile1)}, Pile2: ${cardToDisplay(gameState.pile2)}`);
             }
             return stuck;
         }
@@ -363,6 +374,24 @@
             logMessage(`Both players stuck! Changed middle cards to: ${cardToDisplay(newCard1)} and ${cardToDisplay(newCard2)}`);
             updateDisplay();
             return true;
+        }
+
+        // Continuous stuck checking
+        function continuousStuckCheck() {
+            if (gameState.gameOver) return;
+            
+            logMessage("DEBUG: Running continuous stuck check...");
+            if (areBothPlayersStuck()) {
+                logMessage("DEBUG: Continuous check found stuck players, calling changeMiddleCards");
+                changeMiddleCards();
+            }
+            
+            // Continue checking every 3 seconds
+            setTimeout(() => {
+                if (!gameState.gameOver) {
+                    continuousStuckCheck();
+                }
+            }, 3000);
         }
 
         // Draw card for player
