@@ -242,7 +242,6 @@
             
             // Check if both players are stuck
             if (areBothPlayersStuck()) {
-                logMessage("DEBUG: Calling changeMiddleCards from player move");
                 changeMiddleCards();
             }
             
@@ -304,7 +303,6 @@
             
             // Check if both players are stuck
             if (areBothPlayersStuck()) {
-                logMessage("DEBUG: Calling changeMiddleCards from AI move");
                 changeMiddleCards();
             }
             
@@ -343,29 +341,18 @@
                 canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
             );
             
-            const stuck = !player1CanPlay && !player2CanPlay;
-            logMessage(`DEBUG: Stuck check - Player1 can play: ${player1CanPlay}, Player2 can play: ${player2CanPlay}, Stuck: ${stuck}`);
-            
-            if (stuck) {
-                logMessage(`DEBUG: Both players stuck! Player1 hand: ${gameState.player1Hand.map(c => cardToDisplay(c)).join(', ')}`);
-                logMessage(`DEBUG: Both players stuck! Player2 hand: ${gameState.player2Hand.map(c => cardToDisplay(c)).join(', ')}`);
-                logMessage(`DEBUG: Both players stuck! Pile1: ${cardToDisplay(gameState.pile1)}, Pile2: ${cardToDisplay(gameState.pile2)}`);
-            }
-            return stuck;
+            return !player1CanPlay && !player2CanPlay;
         }
 
         // Change middle cards when both players are stuck
         function changeMiddleCards() {
-            logMessage(`DEBUG: changeMiddleCards called. Player1Side: ${gameState.player1Side.length}, Player2Side: ${gameState.player2Side.length}`);
+            // Create a new deck and shuffle it to get random cards
+            const allCards = createDeck();
+            shuffleDeck(allCards);
             
-            if (gameState.player1Side.length === 0 && gameState.player2Side.length === 0) {
-                logMessage("No side cards available to change middle cards!");
-                return false;
-            }
-            
-            // Take cards from side stacks
-            const newCard1 = gameState.player1Side.length > 0 ? gameState.player1Side.shift() : gameState.player2Side.shift();
-            const newCard2 = gameState.player2Side.length > 0 ? gameState.player2Side.shift() : gameState.player1Side.shift();
+            // Pick two random cards from the shuffled deck
+            const newCard1 = allCards[0];
+            const newCard2 = allCards[1];
             
             // Replace middle cards
             gameState.pile1 = newCard1;
@@ -380,9 +367,7 @@
         function continuousStuckCheck() {
             if (gameState.gameOver) return;
             
-            logMessage("DEBUG: Running continuous stuck check...");
             if (areBothPlayersStuck()) {
-                logMessage("DEBUG: Continuous check found stuck players, calling changeMiddleCards");
                 changeMiddleCards();
             }
             
