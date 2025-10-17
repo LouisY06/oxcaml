@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Card Game - Interactive</title>
-    <meta name="description" content="Interactive Speed card game with AI opponent">
+    <title>Speed Card Game - Real Rules</title>
+    <meta name="description" content="Speed card game with authentic rules - simultaneous play">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <link rel="stylesheet" type="text/css" href="hw5_html_css/hw5_speed_game.css">
     <link rel="icon" href="data:,">
@@ -13,11 +13,12 @@
     <div class="game-container">
         <div class="game-header">
             <h1>Speed Card Game</h1>
-            <div class="game-status" id="gameStatus">Player 1's Turn</div>
+            <div class="game-status" id="gameStatus">Click 'Start Game' to begin!</div>
             <div class="game-controls">
+                <button id="startGameBtn">Start Game</button>
+                <button id="flipCenterBtn" disabled>Flip Center Cards</button>
+                <button id="flipSideBtn" disabled>Flip Side Stacks (When Stuck)</button>
                 <button id="newGameBtn">New Game</button>
-                <button id="aiMoveBtn">AI Move</button>
-                <button id="drawCardsBtn">Draw Cards</button>
             </div>
         </div>
         
@@ -29,7 +30,11 @@
                     <!-- AI cards will be populated here -->
                 </div>
                 <div class="stock-pile">
-                    <div class="stock-label" id="aiStockLabel">Stock: 21 cards</div>
+                    <div class="stock-label" id="aiStockLabel">Draw Pile: 15 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+                <div class="side-stack">
+                    <div class="side-label">Side Stack: 5 cards</div>
                     <div class="card face-down stock">🂠</div>
                 </div>
             </div>
@@ -38,12 +43,22 @@
             <div class="center-area">
                 <div class="pile-area">
                     <div class="pile pile1" id="pile1" onclick="playCard(0)">
-                        <div class="pile-label">Pile 1</div>
-                        <div class="card empty-pile" id="pile1Card">Empty</div>
+                        <div class="pile-label">Center Pile 1</div>
+                        <div class="card face-down" id="pile1Card">🂠</div>
                     </div>
                     <div class="pile pile2" id="pile2" onclick="playCard(1)">
-                        <div class="pile-label">Pile 2</div>
-                        <div class="card empty-pile" id="pile2Card">Empty</div>
+                        <div class="pile-label">Center Pile 2</div>
+                        <div class="card face-down" id="pile2Card">🂠</div>
+                    </div>
+                </div>
+                <div class="side-stacks-area">
+                    <div class="side-stack-pile" id="sideStack1">
+                        <div class="side-label">Side Stack 1</div>
+                        <div class="card face-down stock">🂠</div>
+                    </div>
+                    <div class="side-stack-pile" id="sideStack2">
+                        <div class="side-label">Side Stack 2</div>
+                        <div class="card face-down stock">🂠</div>
                     </div>
                 </div>
             </div>
@@ -55,7 +70,11 @@
                     <!-- Player cards will be populated here -->
                 </div>
                 <div class="stock-pile">
-                    <div class="stock-label" id="playerStockLabel">Stock: 21 cards</div>
+                    <div class="stock-label" id="playerStockLabel">Draw Pile: 15 cards</div>
+                    <div class="card face-down stock">🂠</div>
+                </div>
+                <div class="side-stack">
+                    <div class="side-label">Side Stack: 5 cards</div>
                     <div class="card face-down stock">🂠</div>
                 </div>
             </div>
@@ -63,10 +82,10 @@
 
         <div class="game-info">
             <div class="info-item">
-                <strong>Game Rules:</strong> Play cards that are one rank higher or lower than the top card on either pile.
+                <strong>Speed Rules:</strong> Play cards simultaneously! Cards must be ±1 rank from pile top. Aces are wild (King or 2).
             </div>
             <div class="info-item">
-                <strong>Available Moves:</strong> <span id="availableMoves">Any card on empty piles</span>
+                <strong>Setup:</strong> 20 cards each (15 draw + 5 hand), 2 center piles, 2 side stacks
             </div>
             <div class="info-item">
                 <strong>Game Log:</strong> <div id="gameLog"></div>
@@ -79,13 +98,18 @@
         let gameState = {
             player1Hand: [],
             player2Hand: [],
+            player1Draw: [],
+            player2Draw: [],
+            player1Side: [],
+            player2Side: [],
             pile1: null,
             pile2: null,
-            player1Stock: [],
-            player2Stock: [],
-            currentPlayer: 1,
+            sideStack1: [],
+            sideStack2: [],
+            gameStarted: false,
             gameOver: false,
-            winner: null
+            winner: null,
+            canPlay: true
         };
 
         // Card definitions
@@ -124,57 +148,94 @@
             gameState = {
                 player1Hand: deck.slice(0, 5),
                 player2Hand: deck.slice(5, 10),
-                pile1: null,
-                pile2: null,
-                player1Stock: deck.slice(10, 31),
-                player2Stock: deck.slice(31, 52),
-                currentPlayer: 1,
+                player1Draw: deck.slice(10, 25),
+                player2Draw: deck.slice(25, 40),
+                player1Side: deck.slice(40, 45),
+                player2Side: deck.slice(45, 50),
+                pile1: deck[50],
+                pile2: deck[51],
+                sideStack1: [],
+                sideStack2: [],
+                gameStarted: false,
                 gameOver: false,
-                winner: null
+                winner: null,
+                canPlay: true
             };
 
             updateDisplay();
-            logMessage("New game started! You go first.");
+            logMessage("New game set up! Click 'Start Game' to begin.");
         }
 
-        // Check if a card can be played on a pile
+        // Start the game
+        function startGame() {
+            if (gameState.gameStarted) return;
+            
+            gameState.gameStarted = true;
+            gameState.pile1 = null; // Face down initially
+            gameState.pile2 = null; // Face down initially
+            
+            updateDisplay();
+            logMessage("Game started! Click 'Flip Center Cards' to reveal the center piles.");
+            
+            document.getElementById('startGameBtn').disabled = true;
+            document.getElementById('flipCenterBtn').disabled = false;
+        }
+
+        // Flip center cards
+        function flipCenterCards() {
+            if (!gameState.gameStarted || gameState.pile1 !== null) return;
+            
+            // Reveal the center cards
+            const deck = createDeck();
+            gameState.pile1 = deck[50];
+            gameState.pile2 = deck[51];
+            
+            updateDisplay();
+            logMessage(`Center cards revealed: ${cardToDisplay(gameState.pile1)} and ${cardToDisplay(gameState.pile2)}`);
+            logMessage("Game is now live! Play cards simultaneously!");
+            
+            document.getElementById('flipCenterBtn').disabled = true;
+            document.getElementById('flipSideBtn').disabled = false;
+        }
+
+        // Check if a card can be played on a pile (with Ace wild rule)
         function canPlayCard(card, pileCard) {
-            if (!pileCard) return true; // Can play any card on empty pile
-            return Math.abs(card.value - pileCard.value) === 1;
-        }
-
-        // Get available moves for current player
-        function getAvailableMoves() {
-            const moves = [];
-            const hand = gameState.currentPlayer === 1 ? gameState.player1Hand : gameState.player2Hand;
-            
-            for (let i = 0; i < hand.length; i++) {
-                const card = hand[i];
-                if (canPlayCard(card, gameState.pile1)) {
-                    moves.push({ type: 'play', cardIndex: i, pile: 0 });
-                }
-                if (canPlayCard(card, gameState.pile2)) {
-                    moves.push({ type: 'play', cardIndex: i, pile: 1 });
-                }
+            if (!pileCard) return false; // Can't play on empty pile in Speed
+            if (card.rank === 'Ace') {
+                // Aces are wild - can go on King or 2
+                return pileCard.rank === 'King' || pileCard.rank === 'Two';
             }
-            
-            return moves;
+            return Math.abs(card.value - pileCard.value) === 1;
         }
 
         // Play a card
         function playCard(pileIndex) {
-            if (gameState.currentPlayer !== 1 || gameState.gameOver) return;
+            if (!gameState.gameStarted || !gameState.canPlay || gameState.gameOver) return;
             
-            const moves = getAvailableMoves();
-            const validMove = moves.find(move => move.pile === pileIndex);
+            const pileCard = pileIndex === 0 ? gameState.pile1 : gameState.pile2;
+            if (!pileCard) return;
             
-            if (!validMove) {
-                logMessage("Invalid move! Card cannot be played on that pile.");
+            // Find a valid card to play
+            let validCardIndex = -1;
+            for (let i = 0; i < gameState.player1Hand.length; i++) {
+                if (canPlayCard(gameState.player1Hand[i], pileCard)) {
+                    validCardIndex = i;
+                    break;
+                }
+            }
+            
+            if (validCardIndex === -1) {
+                logMessage("No valid cards to play on that pile!");
                 return;
             }
 
-            const card = gameState.player1Hand[validMove.cardIndex];
-            gameState.player1Hand.splice(validMove.cardIndex, 1);
+            const card = gameState.player1Hand[validCardIndex];
+            gameState.player1Hand.splice(validCardIndex, 1);
+            
+            // Replace immediately from draw pile
+            if (gameState.player1Draw.length > 0) {
+                gameState.player1Hand.push(gameState.player1Draw.shift());
+            }
             
             if (pileIndex === 0) {
                 gameState.pile1 = card;
@@ -185,7 +246,7 @@
             logMessage(`You played ${cardToDisplay(card)} on pile ${pileIndex + 1}`);
             
             // Check for win
-            if (gameState.player1Hand.length === 0 && gameState.player1Stock.length === 0) {
+            if (gameState.player1Hand.length === 0 && gameState.player1Draw.length === 0) {
                 gameState.gameOver = true;
                 gameState.winner = 1;
                 logMessage("🎉 You win!");
@@ -193,26 +254,36 @@
                 return;
             }
 
-            gameState.currentPlayer = 2;
             updateDisplay();
             
-            // AI move after a short delay
+            // AI move after a short delay (simulating simultaneous play)
             setTimeout(() => {
                 if (!gameState.gameOver) {
                     aiMove();
                 }
-            }, 1000);
+            }, 500);
         }
 
-        // AI move using simple strategy (simulating alpha-beta)
+        // AI move
         function aiMove() {
-            if (gameState.currentPlayer !== 2 || gameState.gameOver) return;
+            if (!gameState.gameStarted || gameState.gameOver) return;
             
-            const moves = getAvailableMoves();
-            if (moves.length === 0) {
-                // Try to draw cards
-                if (gameState.player2Stock.length > 0) {
-                    drawCards(2);
+            // Find valid moves
+            const validMoves = [];
+            for (let i = 0; i < gameState.player2Hand.length; i++) {
+                const card = gameState.player2Hand[i];
+                if (canPlayCard(card, gameState.pile1)) {
+                    validMoves.push({ cardIndex: i, pile: 0 });
+                }
+                if (canPlayCard(card, gameState.pile2)) {
+                    validMoves.push({ cardIndex: i, pile: 1 });
+                }
+            }
+            
+            if (validMoves.length === 0) {
+                // Try to flip side stacks if stuck
+                if (gameState.player2Side.length > 0 || gameState.sideStack1.length > 0 || gameState.sideStack2.length > 0) {
+                    logMessage("AI is stuck - would need to flip side stacks");
                     return;
                 } else {
                     gameState.gameOver = true;
@@ -223,11 +294,11 @@
                 }
             }
 
-            // Simple AI strategy: play the highest value card that can be played
-            let bestMove = moves[0];
+            // Play the highest value card
+            let bestMove = validMoves[0];
             let bestValue = 0;
             
-            for (let move of moves) {
+            for (let move of validMoves) {
                 const card = gameState.player2Hand[move.cardIndex];
                 if (card.value > bestValue) {
                     bestValue = card.value;
@@ -238,6 +309,11 @@
             const card = gameState.player2Hand[bestMove.cardIndex];
             gameState.player2Hand.splice(bestMove.cardIndex, 1);
             
+            // Replace immediately from draw pile
+            if (gameState.player2Draw.length > 0) {
+                gameState.player2Hand.push(gameState.player2Draw.shift());
+            }
+            
             if (bestMove.pile === 0) {
                 gameState.pile1 = card;
             } else {
@@ -247,7 +323,7 @@
             logMessage(`AI played ${cardToDisplay(card)} on pile ${bestMove.pile + 1}`);
             
             // Check for AI win
-            if (gameState.player2Hand.length === 0 && gameState.player2Stock.length === 0) {
+            if (gameState.player2Hand.length === 0 && gameState.player2Draw.length === 0) {
                 gameState.gameOver = true;
                 gameState.winner = 2;
                 logMessage("🤖 AI wins!");
@@ -255,25 +331,23 @@
                 return;
             }
 
-            gameState.currentPlayer = 1;
             updateDisplay();
         }
 
-        // Draw cards
-        function drawCards(player) {
-            const hand = player === 1 ? gameState.player1Hand : gameState.player2Hand;
-            const stock = player === 1 ? gameState.player1Stock : gameState.player2Stock;
+        // Flip side stacks when stuck
+        function flipSideStacks() {
+            if (!gameState.gameStarted || gameState.gameOver) return;
             
-            if (stock.length === 0) {
-                logMessage("No cards to draw!");
-                return;
+            if (gameState.sideStack1.length === 0 && gameState.player1Side.length > 0) {
+                gameState.sideStack1.push(gameState.player1Side.shift());
+                logMessage("Flipped card from your side stack to side stack 1");
             }
-
-            const cardsToDraw = Math.min(5 - hand.length, stock.length);
-            const drawnCards = stock.splice(0, cardsToDraw);
-            hand.push(...drawnCards);
-
-            logMessage(`Player ${player} drew ${cardsToDraw} cards`);
+            
+            if (gameState.sideStack2.length === 0 && gameState.player2Side.length > 0) {
+                gameState.sideStack2.push(gameState.player2Side.shift());
+                logMessage("Flipped card from AI side stack to side stack 2");
+            }
+            
             updateDisplay();
         }
 
@@ -290,8 +364,12 @@
             const statusEl = document.getElementById('gameStatus');
             if (gameState.gameOver) {
                 statusEl.textContent = gameState.winner === 1 ? 'You Win!' : 'AI Wins!';
+            } else if (!gameState.gameStarted) {
+                statusEl.textContent = "Click 'Start Game' to begin!";
+            } else if (gameState.pile1 === null) {
+                statusEl.textContent = "Click 'Flip Center Cards' to reveal piles!";
             } else {
-                statusEl.textContent = gameState.currentPlayer === 1 ? 'Your Turn' : 'AI Turn';
+                statusEl.textContent = "Game is live! Play cards simultaneously!";
             }
 
             // Update player hand
@@ -302,10 +380,16 @@
                 cardEl.className = `card ${card.suit.toLowerCase()}`;
                 cardEl.textContent = cardToDisplay(card);
                 cardEl.onclick = () => {
-                    const moves = getAvailableMoves();
-                    const validMove = moves.find(move => move.cardIndex === index);
-                    if (validMove) {
-                        playCard(validMove.pile);
+                    const pileCard = gameState.pile1;
+                    if (canPlayCard(card, pileCard)) {
+                        playCard(0);
+                    } else {
+                        const pileCard2 = gameState.pile2;
+                        if (canPlayCard(card, pileCard2)) {
+                            playCard(1);
+                        } else {
+                            logMessage("Cannot play that card!");
+                        }
                     }
                 };
                 playerHandEl.appendChild(cardEl);
@@ -329,30 +413,21 @@
                 pile1El.className = `card ${gameState.pile1.suit.toLowerCase()}`;
                 pile1El.textContent = cardToDisplay(gameState.pile1);
             } else {
-                pile1El.className = 'card empty-pile';
-                pile1El.textContent = 'Empty';
+                pile1El.className = 'card face-down';
+                pile1El.textContent = '🂠';
             }
 
             if (gameState.pile2) {
                 pile2El.className = `card ${gameState.pile2.suit.toLowerCase()}`;
                 pile2El.textContent = cardToDisplay(gameState.pile2);
             } else {
-                pile2El.className = 'card empty-pile';
-                pile2El.textContent = 'Empty';
+                pile2El.className = 'card face-down';
+                pile2El.textContent = '🂠';
             }
 
             // Update stock counts
-            document.getElementById('playerStockLabel').textContent = `Stock: ${gameState.player1Stock.length} cards`;
-            document.getElementById('aiStockLabel').textContent = `Stock: ${gameState.player2Stock.length} cards`;
-
-            // Update available moves
-            const moves = getAvailableMoves();
-            const movesEl = document.getElementById('availableMoves');
-            if (moves.length === 0) {
-                movesEl.textContent = 'No valid moves - draw cards or game over';
-            } else {
-                movesEl.textContent = `${moves.length} valid moves available`;
-            }
+            document.getElementById('playerStockLabel').textContent = `Draw Pile: ${gameState.player1Draw.length} cards`;
+            document.getElementById('aiStockLabel').textContent = `Draw Pile: ${gameState.player2Draw.length} cards`;
         }
 
         // Log message
@@ -365,16 +440,9 @@
 
         // Event listeners
         document.getElementById('newGameBtn').onclick = newGame;
-        document.getElementById('aiMoveBtn').onclick = () => {
-            if (gameState.currentPlayer === 2) {
-                aiMove();
-            }
-        };
-        document.getElementById('drawCardsBtn').onclick = () => {
-            if (gameState.currentPlayer === 1) {
-                drawCards(1);
-            }
-        };
+        document.getElementById('startGameBtn').onclick = startGame;
+        document.getElementById('flipCenterBtn').onclick = flipCenterCards;
+        document.getElementById('flipSideBtn').onclick = flipSideStacks;
 
         // Initialize the game
         newGame();
@@ -398,13 +466,33 @@
             font-size: 0.9rem;
         }
 
-        .game-controls button:hover {
+        .game-controls button:hover:not(:disabled) {
             background: #f8f9fa;
         }
 
         .game-controls button:disabled {
             background: #e9ecef;
             cursor: not-allowed;
+        }
+
+        .side-stack, .side-stack-pile {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            margin: 5px 0;
+        }
+
+        .side-label {
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .side-stacks-area {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 10px;
         }
 
         #gameLog {
