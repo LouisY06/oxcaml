@@ -4,121 +4,96 @@ open Hw1
 open! Bonsai_web
 open! Bonsai.Let_syntax
 
-(* Define 5 triplets (game states) for testing *)
-let triplet1_early_game =
-  let game_state = Game_state.create () in
-  (* Early game: empty piles, both players have full hands *)
-  game_state
+(* Interactive Speed Card Game Web Interface *)
 
-let triplet2_mid_game =
-  let game_state = Game_state.create () in
-  (* Mid game: some cards played, reduced stock piles *)
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Hearts; rank = Card.Five }; 
-      pile = 0 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Spades; rank = Card.Ten }; 
-      pile = 1 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  game_state
+module Model = struct
+  type t = {
+    game_state : Game_state.t;
+    selected_card : Card.t option;
+    game_log : string list;
+    ai_thinking : bool;
+  }
+  [@@deriving sexp, compare, equal]
 
-let triplet3_late_game =
-  let game_state = Game_state.create () in
-  (* Late game: few cards remaining *)
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Clubs; rank = Card.Queen }; 
-      pile = 0 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Diamonds; rank = Card.Jack }; 
-      pile = 1 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  (* Simulate drawing cards to reduce stock *)
-  let game_state = 
-    match Game_state.make_move game_state Move.Draw_cards with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  game_state
+  let initial = {
+    game_state = Game_state.create ();
+    selected_card = None;
+    game_log = ["Click 'New Game' to start playing Speed!"];
+    ai_thinking = false;
+  }
+end
 
-let triplet4_almost_won =
-  let game_state = Game_state.create () in
-  (* Almost won: very few cards left *)
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Hearts; rank = Card.King }; 
-      pile = 0 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Spades; rank = Card.Ace }; 
-      pile = 1 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  (* Draw multiple times to simulate late game *)
-  let rec draw_multiple state count =
-    if count <= 0 then state
-    else
-      match Game_state.make_move state Move.Draw_cards with
-      | Ok new_state -> draw_multiple new_state (count - 1)
-      | Error _ -> state
-  in
-  draw_multiple game_state 10
+module Action = struct
+  type t =
+    | New_game
+    | Select_card of Card.t
+    | Play_card of Card.t * int  (* card and pile index *)
+    | AI_move
+    | Log_message of string
+    | Set_ai_thinking of bool
+  [@@deriving sexp, compare]
+end
 
-let triplet5_game_over =
-  let game_state = Game_state.create () in
-  (* Game over: one player has won *)
-  let game_state = 
-    match Game_state.make_move game_state (Move.Play_card { 
-      card = { Card.suit = Card.Hearts; rank = Card.Ace }; 
-      pile = 0 
-    }) with
-    | Ok state -> state
-    | Error _ -> game_state
-  in
-  (* Simulate a complete game by playing all cards *)
-  let rec play_all_cards state =
-    let moves = Game_state.get_all_moves state in
-    match moves with
-    | [] -> state
-    | move :: _ ->
-      match Game_state.make_move state move with
-      | Ok new_state -> play_all_cards new_state
-      | Error _ -> state
-  in
-  play_all_cards game_state
+let apply_action (action : Action.t) (model : Model.t) =
+  match action with
+  | New_game ->
+    let new_game_state = Game_state.create () in
+    { model with 
+      game_state = new_game_state;
+      selected_card = None;
+      game_log = ["New game started! Two random cards placed in center piles."] @ model.game_log;
+      ai_thinking = false;
+    }
+  
+  | Select_card card ->
+    { model with selected_card = Some card }
+  
+  | Play_card (card, pile_index) ->
+    let move = Move.Play_card { card; pile = pile_index } in
+    (match Game_state.make_move model.game_state move with
+    | Ok new_game_state ->
+      let log_msg = Printf.sprintf "You played %s on pile %d" (Card.to_string card) (pile_index + 1) in
+      { model with 
+        game_state = new_game_state;
+        selected_card = None;
+        game_log = log_msg :: model.game_log;
+        ai_thinking = true; (* Trigger AI move *)
+      }
+    | Error _ ->
+      let log_msg = Printf.sprintf "Cannot play %s on pile %d!" (Card.to_string card) (pile_index + 1) in
+      { model with game_log = log_msg :: model.game_log })
+  
+  | AI_move ->
+    (* Simple AI: play first available card *)
+    let available_moves = Game_state.get_all_moves model.game_state in
+    let play_moves = List.filter available_moves ~f:(function
+      | Move.Play_card _ -> true
+      | Move.Draw_cards -> false) in
+    (match play_moves with
+    | Move.Play_card { card; pile } :: _ ->
+      (match Game_state.make_move model.game_state (Move.Play_card { card; pile }) with
+      | Ok new_game_state ->
+        let log_msg = Printf.sprintf "AI played %s on pile %d" (Card.to_string card) (pile + 1) in
+        { model with 
+          game_state = new_game_state;
+          game_log = log_msg :: model.game_log;
+          ai_thinking = false;
+        }
+      | Error _ -> { model with ai_thinking = false })
+    | [] -> { model with ai_thinking = false })
+  
+  | Log_message msg ->
+    { model with game_log = msg :: model.game_log }
+  
+  | Set_ai_thinking thinking ->
+    { model with ai_thinking = thinking }
 
-(* Card rendering functions *)
-let card_to_string (card : Card.t) =
-  Card.to_string card
-
+(* Render a single card *)
 let render_card (card : Card.t option) =
   match card with
   | None -> Vdom.Node.text "Empty"
   | Some card -> 
-    let card_text = card_to_string card in
+    let card_text = Card.to_string card in
     let color = 
       match card.suit with
       | Card.Hearts | Card.Diamonds -> "red"
@@ -131,201 +106,136 @@ let render_card (card : Card.t option) =
       ]
       [Vdom.Node.text card_text]
 
-let render_hand (hand : Card.t list) =
-  let card_nodes = List.map hand ~f:(fun card -> render_card (Some card)) in
+(* Render a hand of cards with click handlers *)
+let render_hand (hand : Card.t list) (on_card_click : Card.t -> unit) (selected_card : Card.t option) =
   Vdom.Node.div
     ~attrs:[Vdom.Attr.class_ "hand"]
-    card_nodes
-
-let render_stock (stock : Card.t list) =
-  let count = List.length stock in
-  Vdom.Node.div
-    ~attrs:[Vdom.Attr.class_ "stock-pile"]
-    [
+    (List.map hand ~f:(fun card ->
+      let is_selected = Option.equal Card.equal selected_card (Some card) in
       Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "stock-label"]
-        [Vdom.Node.text (Printf.sprintf "Stock: %d cards" count)];
-      Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "card face-down"]
-        [Vdom.Node.text "🂠"]
-    ]
-
-(* Main game board rendering *)
-let speed_game_board ~(game_state : Game_state.t) ~set_game_state =
-  let current_player_text = 
-    match game_state.current_player with
-    | Player.Player1 -> "Player 1"
-    | Player.Player2 -> "Player 2"
-  in
-  
-  let game_status_text = 
-    if game_state.game_over then
-      match game_state.winner with
-      | None -> "Game Over"
-      | Some Player.Player1 -> "Player 1 Wins!"
-      | Some Player.Player2 -> "Player 2 Wins!"
-    else
-      Printf.sprintf "%s's Turn" current_player_text
-  in
-
-  Vdom.Node.div
-    ~attrs:[Vdom.Attr.class_ "game-container"]
-    [
-      (* Game header *)
-      Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "game-header"]
-        [
-          Vdom.Node.h1 [Vdom.Node.text "Speed Card Game"];
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "game-status"]
-            [Vdom.Node.text game_status_text]
-        ];
-      
-      (* Game board *)
-      Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "game-board"]
-        [
-          (* Player 2 area (top) *)
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "player-area player2-area"]
-            [
-              Vdom.Node.div
-                ~attrs:[Vdom.Attr.class_ "player-label"]
-                [Vdom.Node.text "Player 2"];
-              render_hand game_state.player2_hand;
-              render_stock game_state.player2_stock
-            ];
-          
-          (* Center playing area *)
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "center-area"]
-            [
-              Vdom.Node.div
-                ~attrs:[Vdom.Attr.class_ "pile-area"]
-                [
-                  Vdom.Node.div
-                    ~attrs:[Vdom.Attr.class_ "pile pile1"]
-                    [
-                      Vdom.Node.div
-                        ~attrs:[Vdom.Attr.class_ "pile-label"]
-                        [Vdom.Node.text "Pile 1"];
-                      render_card game_state.pile1
-                    ];
-                  Vdom.Node.div
-                    ~attrs:[Vdom.Attr.class_ "pile pile2"]
-                    [
-                      Vdom.Node.div
-                        ~attrs:[Vdom.Attr.class_ "pile-label"]
-                        [Vdom.Node.text "Pile 2"];
-                      render_card game_state.pile2
-                    ]
-                ]
-            ];
-          
-          (* Player 1 area (bottom) *)
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "player-area player1-area"]
-            [
-              Vdom.Node.div
-                ~attrs:[Vdom.Attr.class_ "player-label"]
-                [Vdom.Node.text "Player 1"];
-              render_hand game_state.player1_hand;
-              render_stock game_state.player1_stock
-            ]
-        ];
-      
-      (* Game info *)
-      Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "game-info"]
-        [
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "info-item"]
-            [Vdom.Node.text "Game Rules: Play cards that are one rank higher or lower than the top card on either pile."];
-          Vdom.Node.div
-            ~attrs:[Vdom.Attr.class_ "info-item"]
-            [Vdom.Node.text (Printf.sprintf "Available moves: %d" (List.length (Game_state.get_all_moves game_state)))]
+        ~attrs:[
+          Vdom.Attr.class_ ("card" ^ if is_selected then " selected" else "");
+          Vdom.Attr.on_click (fun _ -> on_card_click card)
         ]
-    ]
+        [Vdom.Node.text (Card.to_string card)]))
 
-(* App with state management for each triplet *)
-let app_triplet1 (local_ graph) =
-  let game_state, set_game_state = Bonsai.state triplet1_early_game graph in
-  let%arr game_state and set_game_state in
-  speed_game_board ~game_state ~set_game_state
+(* Render game log *)
+let render_game_log (log : string list) =
+  Vdom.Node.div
+    ~attrs:[Vdom.Attr.class_ "game-log"]
+    (List.map log ~f:(fun msg ->
+      Vdom.Node.div [Vdom.Node.text msg]))
 
-let app_triplet2 (local_ graph) =
-  let game_state, set_game_state = Bonsai.state triplet2_mid_game graph in
-  let%arr game_state and set_game_state in
-  speed_game_board ~game_state ~set_game_state
-
-let app_triplet3 (local_ graph) =
-  let game_state, set_game_state = Bonsai.state triplet3_late_game graph in
-  let%arr game_state and set_game_state in
-  speed_game_board ~game_state ~set_game_state
-
-let app_triplet4 (local_ graph) =
-  let game_state, set_game_state = Bonsai.state triplet4_almost_won graph in
-  let%arr game_state and set_game_state in
-  speed_game_board ~game_state ~set_game_state
-
-let app_triplet5 (local_ graph) =
-  let game_state, set_game_state = Bonsai.state triplet5_game_over graph in
-  let%arr game_state and set_game_state in
-  speed_game_board ~game_state ~set_game_state
-
-(* Main app that cycles through all triplets *)
-let app (local_ graph) =
-  let current_triplet, set_triplet = Bonsai.state 1 graph in
-  let%arr current_triplet and set_triplet in
-  
-  let current_app = 
-    match current_triplet with
-    | 1 -> app_triplet1 graph
-    | 2 -> app_triplet2 graph
-    | 3 -> app_triplet3 graph
-    | 4 -> app_triplet4 graph
-    | 5 -> app_triplet5 graph
-    | _ -> app_triplet1 graph
+(* Main interactive Speed game component *)
+let component =
+  let%sub model, inject = Bonsai.state_machine0
+    ~default_model:Model.initial
+    ~apply_action
   in
   
-  Vdom.Node.div
-    [
-      (* Triplet selector *)
-      Vdom.Node.div
-        ~attrs:[Vdom.Attr.class_ "triplet-selector"]
-        [
-          Vdom.Node.button
-            ~attrs:[
-              Vdom.Attr.on_click (fun _ -> set_triplet 1);
-              Vdom.Attr.class_ (if current_triplet = 1 then "active" else "")
-            ]
-            [Vdom.Node.text "Triplet 1: Early Game"];
-          Vdom.Node.button
-            ~attrs:[
-              Vdom.Attr.on_click (fun _ -> set_triplet 2);
-              Vdom.Attr.class_ (if current_triplet = 2 then "active" else "")
-            ]
-            [Vdom.Node.text "Triplet 2: Mid Game"];
-          Vdom.Node.button
-            ~attrs:[
-              Vdom.Attr.on_click (fun _ -> set_triplet 3);
-              Vdom.Attr.class_ (if current_triplet = 3 then "active" else "")
-            ]
-            [Vdom.Node.text "Triplet 3: Late Game"];
-          Vdom.Node.button
-            ~attrs:[
-              Vdom.Attr.on_click (fun _ -> set_triplet 4);
-              Vdom.Attr.class_ (if current_triplet = 4 then "active" else "")
-            ]
-            [Vdom.Node.text "Triplet 4: Almost Won"];
-          Vdom.Node.button
-            ~attrs:[
-              Vdom.Attr.on_click (fun _ -> set_triplet 5);
-              Vdom.Attr.class_ (if current_triplet = 5 then "active" else "")
-            ]
-            [Vdom.Node.text "Triplet 5: Game Over"]
-        ];
-      current_app
-    ]
-
-let () = Bonsai_web.Start.start app
+  (* Auto-trigger AI move after player move *)
+  let%sub () = Bonsai.Edge.on_change
+    ~equal:[%equal: Model.t]
+    model
+    ~f:(fun model ->
+      if model.ai_thinking && not model.game_state.game_over then
+        inject Action.AI_move)
+  in
+  
+  return (
+    let open Vdom.Node in
+    div
+      ~attrs:[Vdom.Attr.class_ "game-container"]
+      [
+        div
+          ~attrs:[Vdom.Attr.class_ "game-header"]
+          [
+            h1 [text "Speed Card Game"];
+            div
+              ~attrs:[Vdom.Attr.class_ "game-controls"]
+              [
+                button
+                  ~attrs:[Vdom.Attr.on_click (fun _ -> inject Action.New_game)]
+                  [text "New Game"]
+              ]
+          ];
+        
+        div
+          ~attrs:[Vdom.Attr.class_ "game-board"]
+          [
+            (* AI Player Area *)
+            div
+              ~attrs:[Vdom.Attr.class_ "player-area player2-area"]
+              [
+                div ~attrs:[Vdom.Attr.class_ "player-label"] [text "AI Player"];
+                render_hand model.game_state.player2_hand (fun _ -> ()) model.selected_card;
+                div
+                  ~attrs:[Vdom.Attr.class_ "stock-pile"]
+                  [
+                    div
+                      ~attrs:[Vdom.Attr.class_ "stock-label"]
+                      [text (Printf.sprintf "Stock: %d cards" (List.length model.game_state.player2_stock))]
+                  ]
+              ];
+            
+            (* Center Playing Area *)
+            div
+              ~attrs:[Vdom.Attr.class_ "center-area"]
+              [
+                div
+                  ~attrs:[Vdom.Attr.class_ "pile-area"]
+                  [
+                    div
+                      ~attrs:[Vdom.Attr.class_ "pile pile1"]
+                      [
+                        div ~attrs:[Vdom.Attr.class_ "pile-label"] [text "Pile 1"];
+                        render_card model.game_state.pile1
+                      ];
+                    div
+                      ~attrs:[Vdom.Attr.class_ "pile pile2"]
+                      [
+                        div ~attrs:[Vdom.Attr.class_ "pile-label"] [text "Pile 2"];
+                        render_card model.game_state.pile2
+                      ]
+                  ]
+              ];
+            
+            (* Human Player Area *)
+            div
+              ~attrs:[Vdom.Attr.class_ "player-area player1-area"]
+              [
+                div ~attrs:[Vdom.Attr.class_ "player-label"] [text "You (Player 1)"];
+                render_hand model.game_state.player1_hand (fun card ->
+                  match model.selected_card with
+                  | None -> inject (Action.Select_card card)
+                  | Some selected_card ->
+                    if Card.equal card selected_card then
+                      (* Try to play on both piles *)
+                      (match model.game_state.pile1, model.game_state.pile2 with
+                      | Some pile1_card, _ when Card.can_play_on selected_card pile1_card ->
+                        inject (Action.Play_card (selected_card, 0))
+                      | _, Some pile2_card when Card.can_play_on selected_card pile2_card ->
+                        inject (Action.Play_card (selected_card, 1))
+                      | _ -> inject (Action.Log_message "Cannot play this card!"))
+                    else
+                      inject (Action.Select_card card)) model.selected_card;
+                div
+                  ~attrs:[Vdom.Attr.class_ "stock-pile"]
+                  [
+                    div
+                      ~attrs:[Vdom.Attr.class_ "stock-label"]
+                      [text (Printf.sprintf "Stock: %d cards" (List.length model.game_state.player1_stock))]
+                  ]
+              ]
+          ];
+        
+        div
+          ~attrs:[Vdom.Attr.class_ "game-info"]
+          [
+            div
+              ~attrs:[Vdom.Attr.class_ "info-item"]
+              [text "Speed Rules: Click cards to play them! Cards must be ±1 rank from pile top. Aces are wild."];
+            render_game_log model.game_log
+          ]
+      ]
+  )
