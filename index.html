@@ -2,13 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Speed Card Game - Real Rules</title>
-    <meta name="description" content="Speed card game with authentic rules - simultaneous play">
+    <title>Speed Card Game - OCaml Logic</title>
+    <meta name="description" content="Interactive Speed card game with OCaml-based logic">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <link rel="stylesheet" type="text/css" href="hw5_html_css/hw5_speed_game.css">
     <link rel="icon" href="data:,">
 </head>
-
 <body>
     <div class="game-container">
         <div class="game-header">
@@ -72,74 +71,23 @@
         </div>
     </div>
 
+    <script src="speed_game_logic.js"></script>
     <script>
-        // Game state
-        let gameState = {
-            player1Hand: [],
-            player2Hand: [],
-            player1Draw: [],
-            player2Draw: [],
-            pile1: null,
-            pile2: null,
-            gameStarted: false,
-            gameOver: false,
-            winner: null,
-            selectedCard: null
-        };
+        // Game state using OCaml-mirrored logic
+        let gameState = null;
+        let selectedCard = null;
+        let gameLog = ["Click 'New Game' to start playing Speed!"];
 
-        // Card definitions
-        const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
-        const ranks = ['Ace', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Jack', 'Queen', 'King'];
-        const rankValues = {
-            'Ace': 1, 'Two': 2, 'Three': 3, 'Four': 4, 'Five': 5, 'Six': 6, 'Seven': 7,
-            'Eight': 8, 'Nine': 9, 'Ten': 10, 'Jack': 11, 'Queen': 12, 'King': 13
-        };
-
-        // Create a standard deck
-        function createDeck() {
-            const deck = [];
-            for (let suit of suits) {
-                for (let rank of ranks) {
-                    deck.push({ suit, rank, value: rankValues[rank] });
-                }
-            }
-            return shuffleDeck(deck);
-        }
-
-        // Shuffle deck
-        function shuffleDeck(deck) {
-            const shuffled = [...deck];
-            for (let i = shuffled.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-            }
-            return shuffled;
-        }
-
-        // Initialize new game
+        // Initialize new game using OCaml-mirrored logic
         function newGame() {
-            const deck = createDeck();
+            gameState = SpeedGame.GameState.create();
+            selectedCard = null;
+            gameLog = ["New game started! Two random cards placed in center piles."];
             
-            gameState = {
-                player1Hand: deck.slice(0, 5),
-                player2Hand: deck.slice(5, 10),
-                player1Draw: deck.slice(10, 25),
-                player2Draw: deck.slice(25, 40),
-                pile1: deck[40], // Random center card 1
-                pile2: deck[41], // Random center card 2
-                gameStarted: true,
-                gameOver: false,
-                winner: null,
-                selectedCard: null
-            };
-
-            // Ensure both players have 5 cards (auto-draw if needed)
-            autoDrawCards(1);
-            autoDrawCards(2);
-
-            updateDisplay();
             logMessage("New game started! Two random cards placed in center piles.");
-            logMessage(`Center cards: ${cardToDisplay(gameState.pile1)} and ${cardToDisplay(gameState.pile2)}`);
+            logMessage(`Center cards: ${gameState.pile1.toString()} and ${gameState.pile2.toString()}`);
+            
+            updateDisplay();
             
             // Start AI playing automatically
             setTimeout(() => {
@@ -147,138 +95,54 @@
                     aiPlayLoop();
                 }
             }, 1000);
+        }
+
+        // Play card using OCaml-mirrored logic
+        function playCard(card, pileIndex) {
+            if (!gameState || gameState.gameOver) return;
             
-            // Start continuous stuck checking
-            setTimeout(() => {
-                if (!gameState.gameOver) {
-                    continuousStuckCheck();
+            const move = SpeedGame.Move.PlayCard(card, pileIndex);
+            const result = gameState.makeMove(move);
+            
+            if (result.success) {
+                logMessage(`You played ${card.toString()} on pile ${pileIndex + 1}`);
+                selectedCard = null;
+                
+                // Check if both players are stuck
+                if (gameState.areBothPlayersStuck()) {
+                    gameState.changeMiddleCards();
+                    logMessage(`Both players stuck! Changed middle cards to: ${gameState.pile1.toString()} and ${gameState.pile2.toString()}`);
                 }
-            }, 2000);
-        }
-
-        // Check if a card can be played on a pile (with Ace wild rule)
-        function canPlayCard(card, pileCard) {
-            if (!pileCard) return false;
-            if (card.rank === 'Ace') {
-                // Aces are wild - can go on King or 2
-                return pileCard.rank === 'King' || pileCard.rank === 'Two';
-            }
-            return Math.abs(card.value - pileCard.value) === 1;
-        }
-
-        // Select a card to play
-        function selectCard(cardIndex) {
-            if (gameState.gameOver) return;
-            
-            gameState.selectedCard = cardIndex;
-            updateDisplay();
-            logMessage(`Selected card: ${cardToDisplay(gameState.player1Hand[cardIndex])}`);
-        }
-
-        // Play selected card on a pile
-        function playCard(pileIndex) {
-            if (gameState.gameOver || gameState.selectedCard === null) return;
-            
-            const card = gameState.player1Hand[gameState.selectedCard];
-            const pileCard = pileIndex === 0 ? gameState.pile1 : gameState.pile2;
-            
-            if (!canPlayCard(card, pileCard)) {
-                logMessage(`Cannot play ${cardToDisplay(card)} on pile ${pileIndex + 1}!`);
-                return;
-            }
-
-            // Play the card
-            gameState.player1Hand.splice(gameState.selectedCard, 1);
-            
-            if (pileIndex === 0) {
-                gameState.pile1 = card;
-            } else {
-                gameState.pile2 = card;
-            }
-
-            logMessage(`You played ${cardToDisplay(card)} on pile ${pileIndex + 1}`);
-            
-            // Auto-draw to maintain 5 cards
-            autoDrawCards(1);
-            
-            // Check for win
-            if (gameState.player1Hand.length === 0 && gameState.player1Draw.length === 0) {
-                gameState.gameOver = true;
-                gameState.winner = 1;
-                logMessage("🎉 You win!");
+                
                 updateDisplay();
-                return;
+            } else {
+                logMessage(`Cannot play ${card.toString()} on pile ${pileIndex + 1}!`);
             }
-
-            gameState.selectedCard = null;
-            
-            // Check if both players are stuck
-            if (areBothPlayersStuck()) {
-                changeMiddleCards();
-            }
-            
-            updateDisplay();
         }
 
-        // AI play loop - plays continuously
+        // AI play loop using OCaml-mirrored logic
         function aiPlayLoop() {
-            if (gameState.gameOver) return;
+            if (!gameState || gameState.gameOver) return;
             
-            // Find valid moves for AI
-            const validMoves = [];
-            for (let i = 0; i < gameState.player2Hand.length; i++) {
-                const card = gameState.player2Hand[i];
-                if (canPlayCard(card, gameState.pile1)) {
-                    validMoves.push({ cardIndex: i, pile: 0 });
-                }
-                if (canPlayCard(card, gameState.pile2)) {
-                    validMoves.push({ cardIndex: i, pile: 1 });
-                }
-            }
+            const availableMoves = gameState.getAllMoves();
+            const playMoves = availableMoves.filter(move => move.type === 'PlayCard');
             
-            if (validMoves.length > 0) {
-                // Play the highest value card
-                let bestMove = validMoves[0];
-                let bestValue = 0;
+            if (playMoves.length > 0) {
+                const move = playMoves[0]; // Simple AI: play first available card
+                const result = gameState.makeMove(move);
                 
-                for (let move of validMoves) {
-                    const card = gameState.player2Hand[move.cardIndex];
-                    if (card.value > bestValue) {
-                        bestValue = card.value;
-                        bestMove = move;
+                if (result.success) {
+                    logMessage(`AI played ${move.card.toString()} on pile ${move.pile + 1}`);
+                    
+                    // Check if both players are stuck
+                    if (gameState.areBothPlayersStuck()) {
+                        gameState.changeMiddleCards();
+                        logMessage(`Both players stuck! Changed middle cards to: ${gameState.pile1.toString()} and ${gameState.pile2.toString()}`);
                     }
-                }
-
-                const card = gameState.player2Hand[bestMove.cardIndex];
-                gameState.player2Hand.splice(bestMove.cardIndex, 1);
-                
-                if (bestMove.pile === 0) {
-                    gameState.pile1 = card;
-                } else {
-                    gameState.pile2 = card;
-                }
-
-                logMessage(`AI played ${cardToDisplay(card)} on pile ${bestMove.pile + 1}`);
-                
-                // Auto-draw to maintain 5 cards
-                autoDrawCards(2);
-                
-                // Check for AI win
-                if (gameState.player2Hand.length === 0 && gameState.player2Draw.length === 0) {
-                    gameState.gameOver = true;
-                    gameState.winner = 2;
-                    logMessage("🤖 AI wins!");
+                    
                     updateDisplay();
-                    return;
                 }
             }
-            
-            // Check if both players are stuck
-            if (areBothPlayersStuck()) {
-                changeMiddleCards();
-            }
-            
-            updateDisplay();
             
             // Continue AI loop after a delay
             setTimeout(() => {
@@ -288,142 +152,79 @@
             }, 2000 + Math.random() * 1000); // Random delay 2-3 seconds
         }
 
-        // Auto-draw cards to maintain 5 cards in hand
-        function autoDrawCards(player) {
-            const hand = player === 1 ? gameState.player1Hand : gameState.player2Hand;
-            const drawPile = player === 1 ? gameState.player1Draw : gameState.player2Draw;
-            
-            while (hand.length < 5 && drawPile.length > 0) {
-                const card = drawPile.shift();
-                hand.push(card);
-                if (player === 1) {
-                    logMessage(`Auto-drew ${cardToDisplay(card)}`);
-                } else {
-                    logMessage(`AI auto-drew a card`);
-                }
-            }
-        }
-
-        // Check if both players are stuck (no valid moves)
-        function areBothPlayersStuck() {
-            const player1CanPlay = gameState.player1Hand.some(card => 
-                canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
-            );
-            const player2CanPlay = gameState.player2Hand.some(card => 
-                canPlayCard(card, gameState.pile1) || canPlayCard(card, gameState.pile2)
-            );
-            
-            return !player1CanPlay && !player2CanPlay;
-        }
-
-        // Change middle cards when both players are stuck
-        function changeMiddleCards() {
-            // Create a new deck and shuffle it to get random cards
-            const allCards = createDeck();
-            shuffleDeck(allCards);
-            
-            // Pick two random cards from the shuffled deck
-            const newCard1 = allCards[0];
-            const newCard2 = allCards[1];
-            
-            // Replace middle cards
-            gameState.pile1 = newCard1;
-            gameState.pile2 = newCard2;
-            
-            logMessage(`Both players stuck! Changed middle cards to: ${cardToDisplay(newCard1)} and ${cardToDisplay(newCard2)}`);
-            updateDisplay();
-            return true;
-        }
-
-        // Continuous stuck checking
-        function continuousStuckCheck() {
-            if (gameState.gameOver) return;
-            
-            if (areBothPlayersStuck()) {
-                changeMiddleCards();
-            }
-            
-            // Continue checking every 3 seconds
-            setTimeout(() => {
-                if (!gameState.gameOver) {
-                    continuousStuckCheck();
-                }
-            }, 3000);
-        }
-
         // Convert card to display string
         function cardToDisplay(card) {
-            const suitSymbols = { 'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠' };
-            const rankSymbols = { 'Ace': 'A', 'Two': '2', 'Three': '3', 'Four': '4', 'Five': '5', 'Six': '6', 'Seven': '7', 'Eight': '8', 'Nine': '9', 'Ten': '10', 'Jack': 'J', 'Queen': 'Q', 'King': 'K' };
-            return rankSymbols[card.rank] + suitSymbols[card.suit];
+            return card ? card.toString() : "Empty";
         }
 
         // Update the display
         function updateDisplay() {
+            if (!gameState) return;
+            
             // Update game status
             const statusEl = document.getElementById('gameStatus');
             if (gameState.gameOver) {
-                statusEl.textContent = gameState.winner === 1 ? 'You Win!' : 'AI Wins!';
+                statusEl.textContent = gameState.winner === 'Player1' ? 'You Win!' : 'AI Wins!';
             } else {
-                statusEl.textContent = "Game is live! Click cards to play them!";
+                statusEl.textContent = `Current Player: ${gameState.currentPlayer === 'Player1' ? 'You' : 'AI'}`;
             }
 
-            // Update player hand
+            // Update player hands
             const playerHandEl = document.getElementById('playerHand');
             playerHandEl.innerHTML = '';
-            gameState.player1Hand.forEach((card, index) => {
+            gameState.player1Hand.forEach(card => {
                 const cardEl = document.createElement('div');
-                cardEl.className = `card ${card.suit.toLowerCase()}`;
-                if (gameState.selectedCard === index) {
-                    cardEl.style.border = '3px solid #007bff';
-                    cardEl.style.transform = 'translateY(-10px)';
+                cardEl.className = 'card';
+                cardEl.textContent = card.toString();
+                cardEl.style.color = (card.suit === 'Hearts' || card.suit === 'Diamonds') ? 'red' : 'black';
+                
+                if (selectedCard && card.equals(selectedCard)) {
+                    cardEl.classList.add('selected');
                 }
-                cardEl.textContent = cardToDisplay(card);
-                cardEl.onclick = () => selectCard(index);
+                
+                cardEl.onclick = () => {
+                    if (!selectedCard) {
+                        selectedCard = card;
+                        updateDisplay();
+                    } else if (card.equals(selectedCard)) {
+                        // Try to play on both piles
+                        if (gameState.pile1 && SpeedGame.Card.canPlayOn(selectedCard, gameState.pile1)) {
+                            playCard(selectedCard, 0);
+                        } else if (gameState.pile2 && SpeedGame.Card.canPlayOn(selectedCard, gameState.pile2)) {
+                            playCard(selectedCard, 1);
+                        } else {
+                            logMessage("Cannot play this card!");
+                        }
+                    } else {
+                        selectedCard = card;
+                        updateDisplay();
+                    }
+                };
+                
                 playerHandEl.appendChild(cardEl);
             });
 
-            // Update AI hand (face down)
+            // Update AI hand
             const aiHandEl = document.getElementById('aiHand');
             aiHandEl.innerHTML = '';
-            gameState.player2Hand.forEach(() => {
+            gameState.player2Hand.forEach(card => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'card face-down';
                 cardEl.textContent = '🂠';
                 aiHandEl.appendChild(cardEl);
             });
 
-            // Update piles
+            // Update center piles
             const pile1El = document.getElementById('pile1Card');
             const pile2El = document.getElementById('pile2Card');
-            
-            if (gameState.pile1) {
-                pile1El.className = `card ${gameState.pile1.suit.toLowerCase()}`;
-                pile1El.textContent = cardToDisplay(gameState.pile1);
-                pile1El.onclick = () => playCard(0);
-                pile1El.style.cursor = 'pointer';
-            } else {
-                pile1El.className = 'card empty-pile';
-                pile1El.textContent = 'Empty';
-                pile1El.onclick = null;
-                pile1El.style.cursor = 'default';
-            }
-
-            if (gameState.pile2) {
-                pile2El.className = `card ${gameState.pile2.suit.toLowerCase()}`;
-                pile2El.textContent = cardToDisplay(gameState.pile2);
-                pile2El.onclick = () => playCard(1);
-                pile2El.style.cursor = 'pointer';
-            } else {
-                pile2El.className = 'card empty-pile';
-                pile2El.textContent = 'Empty';
-                pile2El.onclick = null;
-                pile2El.style.cursor = 'default';
-            }
+            pile1El.textContent = cardToDisplay(gameState.pile1);
+            pile2El.textContent = cardToDisplay(gameState.pile2);
+            pile1El.style.color = gameState.pile1 ? (gameState.pile1.suit === 'Hearts' || gameState.pile1.suit === 'Diamonds' ? 'red' : 'black') : 'black';
+            pile2El.style.color = gameState.pile2 ? (gameState.pile2.suit === 'Hearts' || gameState.pile2.suit === 'Diamonds' ? 'red' : 'black') : 'black';
 
             // Update stock counts
-            document.getElementById('playerStockLabel').textContent = `Draw Pile: ${gameState.player1Draw.length} cards`;
-            document.getElementById('aiStockLabel').textContent = `Draw Pile: ${gameState.player2Draw.length} cards`;
+            document.getElementById('playerStockLabel').textContent = `Draw Pile: ${gameState.player1Stock.length} cards`;
+            document.getElementById('aiStockLabel').textContent = `Draw Pile: ${gameState.player2Stock.length} cards`;
         }
 
         // Log message
@@ -447,22 +248,26 @@
             display: flex;
             gap: 10px;
             justify-content: center;
-            flex-wrap: wrap;
         }
 
         .game-controls button {
-            padding: 8px 16px;
-            border: 1px solid #ccc;
-            background: white;
-            cursor: pointer;
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
             border-radius: 5px;
-            font-size: 0.9rem;
+            cursor: pointer;
         }
 
         .game-controls button:hover {
-            background: #f8f9fa;
+            background: #0056b3;
         }
 
+        .card.selected {
+            border: 3px solid #007bff;
+            background: #e3f2fd;
+        }
 
         #gameLog {
             max-height: 100px;
@@ -471,25 +276,8 @@
             padding: 10px;
             border-radius: 5px;
             font-family: monospace;
-            font-size: 0.8rem;
-        }
-
-        .hand .card {
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-
-        .hand .card:hover {
-            transform: translateY(-5px);
-        }
-
-        .pile {
-            transition: background-color 0.2s ease;
-        }
-
-        .pile:hover {
-            background-color: rgba(0, 123, 255, 0.1);
+            font-size: 12px;
         }
     </style>
 </body>
-</html><!-- Cache buster: Fri Oct 17 15:01:51 EDT 2025 -->
+</html>
