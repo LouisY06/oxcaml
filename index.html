@@ -71,25 +71,239 @@
         </div>
     </div>
 
-    <!-- OCaml-compiled JavaScript will be loaded here -->
-    <!-- <script src="speed_game_pure.bc.js"></script> -->
     <script>
-        // Game state using pure OCaml logic (when compiled)
+        // JavaScript implementation that mirrors the OCaml logic from hw2_speed_logic.ml
+        // This uses the same structure and functions as the existing OCaml modules
+        
+        // Card module (mirrors hw2_speed_logic.ml Card module)
+        const Card = {
+            rank_value: (rank) => {
+                const values = { 'Ace': 1, 'Two': 2, 'Three': 3, 'Four': 4, 'Five': 5, 'Six': 6, 
+                               'Seven': 7, 'Eight': 8, 'Nine': 9, 'Ten': 10, 'Jack': 11, 'Queen': 12, 'King': 13 };
+                return values[rank];
+            },
+            
+            can_play_on: (card, pile_card) => {
+                if (!pile_card) return false;
+                const card_val = Card.rank_value(card.rank);
+                const pile_val = Card.rank_value(pile_card.rank);
+                return card_val === pile_val + 1 || card_val === pile_val - 1;
+            },
+            
+            to_string: (card) => {
+                const suit_symbols = { 'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠' };
+                const rank_symbols = { 'Ace': 'A', 'Two': '2', 'Three': '3', 'Four': '4', 'Five': '5',
+                                    'Six': '6', 'Seven': '7', 'Eight': '8', 'Nine': '9', 'Ten': '10',
+                                    'Jack': 'J', 'Queen': 'Q', 'King': 'K' };
+                return rank_symbols[card.rank] + suit_symbols[card.suit];
+            }
+        };
+
+        // Move module (mirrors hw2_speed_logic.ml Move module)
+        const Move = {
+            Play_card: (card, pile) => ({ type: 'Play_card', card, pile }),
+            Draw_cards: () => ({ type: 'Draw_cards' })
+        };
+
+        // Game state management (mirrors hw2_speed_logic.ml Game_state module)
+        const GameState = {
+            create: () => {
+                const deck = createDeck();
+                return {
+                    player1_hand: deck.slice(0, 5),
+                    player2_hand: deck.slice(5, 10),
+                    player1_stock: deck.slice(10, 25),
+                    player2_stock: deck.slice(25, 40),
+                    pile1: deck[40],
+                    pile2: deck[41],
+                    current_player: 'Player1',
+                    game_over: false,
+                    winner: null,
+                    game_log: ["New game started! Two random cards placed in center piles."],
+                    stuck_count: 0
+                };
+            },
+
+            make_move: (state, move) => {
+                let newState = { ...state };
+                let log_msg = "";
+
+                if (newState.game_over) return { type: 'Error', error: 'Game_is_over' };
+
+                switch (move.type) {
+                    case 'Play_card':
+                        const { card, pile } = move;
+                        const hand = newState.current_player === 'Player1' ? newState.player1_hand : newState.player2_hand;
+                        const pile_card = pile === 0 ? newState.pile1 : newState.pile2;
+
+                        if (!hand.some(c => c.rank === card.rank && c.suit === card.suit)) {
+                            return { type: 'Error', error: 'Card_not_in_hand' };
+                        }
+                        if (!pile_card) {
+                            return { type: 'Error', error: 'Empty_pile' };
+                        }
+                        if (!Card.can_play_on(card, pile_card)) {
+                            return { type: 'Error', error: 'Invalid_play' };
+                        }
+
+                        // Remove card from hand
+                        if (newState.current_player === 'Player1') {
+                            newState.player1_hand = newState.player1_hand.filter(c => !(c.rank === card.rank && c.suit === card.suit));
+                        } else {
+                            newState.player2_hand = newState.player2_hand.filter(c => !(c.rank === card.rank && c.suit === card.suit));
+                        }
+
+                        // Place card on pile
+                        if (pile === 0) {
+                            newState.pile1 = card;
+                        } else {
+                            newState.pile2 = card;
+                        }
+
+                        log_msg = `${newState.current_player === 'Player1' ? 'You' : 'AI'} played ${Card.to_string(card)} on pile ${pile + 1}`;
+                        newState.game_log = [log_msg, ...newState.game_log];
+
+                        // Auto-draw
+                        newState = autoDrawCardsInternal(newState, newState.current_player === 'Player1' ? 1 : 2);
+
+                        // Check for win
+                        if ((newState.current_player === 'Player1' && newState.player1_hand.length === 0 && newState.player1_stock.length === 0) ||
+                            (newState.current_player === 'Player2' && newState.player2_hand.length === 0 && newState.player2_stock.length === 0)) {
+                            newState.game_over = true;
+                            newState.winner = newState.current_player;
+                            newState.game_log = [`🎉 ${newState.current_player === 'Player1' ? 'You' : 'AI'} win!`, ...newState.game_log];
+                        }
+                        newState.stuck_count = 0;
+                        return { type: 'Ok', value: newState };
+
+                    case 'Draw_cards':
+                        const drawPile = newState.current_player === 'Player1' ? newState.player1_stock : newState.player2_stock;
+                        const handToDraw = newState.current_player === 'Player1' ? newState.player1_hand : newState.player2_hand;
+
+                        if (drawPile.length === 0) {
+                            return { type: 'Error', error: 'No_cards_to_draw' };
+                        }
+                        if (handToDraw.length >= 5) {
+                            return { type: 'Error', error: 'Hand_full' };
+                        }
+
+                        const drawnCard = drawPile.shift();
+                        handToDraw.push(drawnCard);
+                        if (newState.current_player === 'Player1') {
+                            newState.player1_hand = handToDraw;
+                            newState.player1_stock = drawPile;
+                            log_msg = `You drew ${Card.to_string(drawnCard)}`;
+                        } else {
+                            newState.player2_hand = handToDraw;
+                            newState.player2_stock = drawPile;
+                            log_msg = `AI drew a card`;
+                        }
+                        newState.game_log = [log_msg, ...newState.game_log];
+                        newState.stuck_count = 0;
+                        return { type: 'Ok', value: newState };
+                }
+                return { type: 'Error', error: 'Unknown_move' };
+            },
+
+            get_all_moves: (state) => {
+                const moves = [];
+                const hand = state.current_player === 'Player1' ? state.player1_hand : state.player2_hand;
+
+                hand.forEach(card => {
+                    if (Card.can_play_on(card, state.pile1)) {
+                        moves.push(Move.Play_card(card, 0));
+                    }
+                    if (Card.can_play_on(card, state.pile2)) {
+                        moves.push(Move.Play_card(card, 1));
+                    }
+                });
+
+                const drawPile = state.current_player === 'Player1' ? state.player1_stock : state.player2_stock;
+                if (hand.length < 5 && drawPile.length > 0) {
+                    moves.push(Move.Draw_cards());
+                }
+                return moves;
+            },
+
+            are_both_players_stuck: (state) => {
+                const player1CanPlay = state.player1_hand.some(card =>
+                    Card.can_play_on(card, state.pile1) || Card.can_play_on(card, state.pile2)
+                );
+                const player2CanPlay = state.player2_hand.some(card =>
+                    Card.can_play_on(card, state.pile1) || Card.can_play_on(card, state.pile2)
+                );
+                return !player1CanPlay && !player2CanPlay;
+            },
+
+            change_middle_cards: (state) => {
+                const allCards = createDeck();
+                shuffleDeck(allCards);
+                state.pile1 = allCards[0];
+                state.pile2 = allCards[1];
+                state.game_log = [`Both players stuck! Changed middle cards to: ${Card.to_string(state.pile1)} and ${Card.to_string(state.pile2)}`, ...state.game_log];
+                return state;
+            }
+        };
+
+        // Helper functions
+        function createDeck() {
+            const suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades'];
+            const ranks = ['Ace', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Jack', 'Queen', 'King'];
+            const deck = [];
+            suits.forEach(suit => {
+                ranks.forEach(rank => {
+                    deck.push({ suit, rank });
+                });
+            });
+            console.log("Created deck with", deck.length, "cards");
+            shuffleDeck(deck);
+            return deck;
+        }
+
+        function shuffleDeck(deck) {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        function autoDrawCardsInternal(state, player) {
+            const hand = player === 1 ? state.player1_hand : state.player2_hand;
+            const drawPile = player === 1 ? state.player1_stock : state.player2_stock;
+            const logPrefix = player === 1 ? "Auto-drew" : "AI auto-drew";
+
+            while (hand.length < 5 && drawPile.length > 0) {
+                const card = drawPile.shift();
+                hand.push(card);
+                state.game_log = [`${logPrefix} ${Card.to_string(card)}`, ...state.game_log];
+            }
+            if (player === 1) {
+                state.player1_hand = hand;
+                state.player1_stock = drawPile;
+            } else {
+                state.player2_hand = hand;
+                state.player2_stock = drawPile;
+            }
+            return state;
+        }
+
+        // Game state variables
         let gameState = null;
         let selectedCard = null;
         let gameLog = ["Click 'New Game' to start playing Speed!"];
 
-        // Initialize new game using pure OCaml logic
+        // Initialize new game using working JavaScript implementation
         function newGame() {
-            // When OCaml is compiled: gameState = create_game();
-            // For now, using placeholder until OCaml compilation is set up
-            gameState = createGamePlaceholder();
+            console.log("Starting new game...");
+            gameState = GameState.create();
+            console.log("Game state created:", gameState);
             selectedCard = null;
             gameLog = ["New game started! Two random cards placed in center piles."];
             
             logMessage("New game started! Two random cards placed in center piles.");
-            logMessage(`Center cards: ${cardToString(gameState.pile1)} and ${cardToString(gameState.pile2)}`);
+            logMessage(`Center cards: ${Card.to_string(gameState.pile1)} and ${Card.to_string(gameState.pile2)}`);
             
+            console.log("Updating display...");
             updateDisplay();
             
             // Start AI playing automatically
@@ -100,71 +314,94 @@
             }, 1000);
         }
 
-        // Play card using pure OCaml logic
+        // Play card using working JavaScript implementation
         function playCard(card, pileIndex) {
             if (!gameState || gameState.game_over) return;
             
-            // When OCaml is compiled: const move = Move.play_card(card, pileIndex);
-            const move = { type: 'Play_card', card, pile: pileIndex };
-            const result = makeMove(gameState, move);
+            const move = Move.Play_card(card, pileIndex);
+            const result = GameState.make_move(gameState, move);
             
-            if (result.success) {
-                logMessage(`You played ${cardToString(card)} on pile ${pileIndex + 1}`);
+            if (result.type === 'Ok') {
+                logMessage(`You played ${Card.to_string(card)} on pile ${pileIndex + 1}`);
                 selectedCard = null;
                 
                 // Check if both players are stuck
-                if (areBothPlayersStuck(gameState)) {
-                    gameState = changeMiddleCards(gameState);
-                    logMessage(`Both players stuck! Changed middle cards to: ${cardToString(gameState.pile1)} and ${cardToString(gameState.pile2)}`);
+                if (GameState.are_both_players_stuck(gameState)) {
+                    gameState = GameState.change_middle_cards(gameState);
+                    logMessage(`Both players stuck! Changed middle cards to: ${Card.to_string(gameState.pile1)} and ${Card.to_string(gameState.pile2)}`);
                 }
                 
+                gameState = result.value;
+                gameState.current_player = 'Player2'; // Switch to AI turn
                 updateDisplay();
+                
+                if (!gameState.game_over) {
+                    setTimeout(aiPlayLoop, 1000); // AI plays after a short delay
+                }
             } else {
-                logMessage(`Cannot play ${cardToString(card)} on pile ${pileIndex + 1}!`);
+                logMessage(`Cannot play ${Card.to_string(card)} on pile ${pileIndex + 1}! Error: ${result.error}`);
             }
         }
 
-        // AI play loop using pure OCaml logic
+        // AI play loop using working JavaScript implementation
         function aiPlayLoop() {
             if (!gameState || gameState.game_over) return;
-            
-            // When OCaml is compiled: const availableMoves = get_all_moves(gameState);
-            const availableMoves = getAllMoves(gameState);
-            const playMoves = availableMoves.filter(move => move.type === 'Play_card');
-            
+            if (gameState.current_player !== 'Player2') return;
+
+            const availableMoves = GameState.get_all_moves(gameState);
+            const playMoves = availableMoves.filter(m => m.type === 'Play_card');
+
             if (playMoves.length > 0) {
-                const move = playMoves[0]; // Simple AI: play first available card
-                const result = makeMove(gameState, move);
-                
-                if (result.success) {
-                    logMessage(`AI played ${cardToString(move.card)} on pile ${move.pile + 1}`);
+                // Simple AI: play the first valid card
+                const bestMove = playMoves[0];
+                const result = GameState.make_move(gameState, bestMove);
+
+                if (result.type === 'Ok') {
+                    gameState = result.value;
+                    logMessage(`AI played ${Card.to_string(bestMove.card)} on pile ${bestMove.pile + 1}`);
                     
-                    // Check if both players are stuck
-                    if (areBothPlayersStuck(gameState)) {
-                        gameState = changeMiddleCards(gameState);
-                        logMessage(`Both players stuck! Changed middle cards to: ${cardToString(gameState.pile1)} and ${cardToString(gameState.pile2)}`);
+                    // Check for stuck players after a move
+                    if (GameState.are_both_players_stuck(gameState)) {
+                        gameState = GameState.change_middle_cards(gameState);
                     }
-                    
+
+                    gameState.current_player = 'Player1'; // Switch to Player 1 turn
+                    updateDisplay();
+                } else {
+                    logMessage(`AI failed to play: ${result.error}`);
+                    gameState.current_player = 'Player1';
                     updateDisplay();
                 }
-            }
-            
-            // Continue AI loop after a delay
-            setTimeout(() => {
-                if (!gameState.game_over) {
-                    aiPlayLoop();
+            } else {
+                // If AI has no play moves, it tries to draw if possible
+                const drawMove = availableMoves.find(m => m.type === 'Draw_cards');
+                if (drawMove) {
+                    const result = GameState.make_move(gameState, drawMove);
+                    if (result.type === 'Ok') {
+                        gameState = result.value;
+                        logMessage("AI drew a card");
+                        updateDisplay();
+                        setTimeout(aiPlayLoop, 500); // Give AI a chance to play after drawing
+                        return;
+                    } else {
+                        logMessage(`AI failed to draw: ${result.error}`);
+                    }
                 }
-            }, 2000 + Math.random() * 1000); // Random delay 2-3 seconds
+                // If AI can't play or draw, it's stuck, switch turn back to player
+                logMessage("AI has no moves, switching to your turn.");
+                gameState.current_player = 'Player1';
+                updateDisplay();
+            }
         }
 
-        // Convert card to display string
-        function cardToString(card) {
-            return card ? card.toString() : "Empty";
-        }
 
-        // Update the display
+        // Update the display using working JavaScript implementation
         function updateDisplay() {
-            if (!gameState) return;
+            console.log("updateDisplay called, gameState:", gameState);
+            if (!gameState) {
+                console.log("No game state, returning");
+                return;
+            }
             
             // Update game status
             const statusEl = document.getElementById('gameStatus');
@@ -174,62 +411,86 @@
                 statusEl.textContent = `Current Player: ${gameState.current_player === 'Player1' ? 'You' : 'AI'}`;
             }
 
-            // Update player hands
+            console.log("Updating player hands...");
+            // Update player 1 hand
             const playerHandEl = document.getElementById('playerHand');
             playerHandEl.innerHTML = '';
             gameState.player1_hand.forEach(card => {
                 const cardEl = document.createElement('div');
-                cardEl.className = 'card';
-                cardEl.textContent = cardToString(card);
-                cardEl.style.color = (card.suit === 'Hearts' || card.suit === 'Diamonds') ? 'red' : 'black';
-                
-                if (selectedCard && cardEquals(card, selectedCard)) {
+                cardEl.className = `card ${card.suit === 'Hearts' || card.suit === 'Diamonds' ? 'red' : 'black'}`;
+                cardEl.textContent = Card.to_string(card);
+                cardEl.onclick = () => selectCard(card);
+                if (selectedCard && selectedCard.rank === card.rank && selectedCard.suit === card.suit) {
                     cardEl.classList.add('selected');
                 }
-                
-                cardEl.onclick = () => {
-                    if (!selectedCard) {
-                        selectedCard = card;
-                        updateDisplay();
-                    } else if (cardEquals(card, selectedCard)) {
-                        // Try to play on both piles
-                        if (gameState.pile1 && cardCanPlayOn(selectedCard, gameState.pile1)) {
-                            playCard(selectedCard, 0);
-                        } else if (gameState.pile2 && cardCanPlayOn(selectedCard, gameState.pile2)) {
-                            playCard(selectedCard, 1);
-                        } else {
-                            logMessage("Cannot play this card!");
-                        }
-                    } else {
-                        selectedCard = card;
-                        updateDisplay();
-                    }
-                };
-                
                 playerHandEl.appendChild(cardEl);
             });
 
-            // Update AI hand
+            // Update player 2 hand (AI)
             const aiHandEl = document.getElementById('aiHand');
             aiHandEl.innerHTML = '';
             gameState.player2_hand.forEach(card => {
                 const cardEl = document.createElement('div');
-                cardEl.className = 'card face-down';
+                cardEl.className = 'card face-down'; // AI cards are face down
                 cardEl.textContent = '🂠';
                 aiHandEl.appendChild(cardEl);
             });
 
-            // Update center piles
-            const pile1El = document.getElementById('pile1Card');
-            const pile2El = document.getElementById('pile2Card');
-            pile1El.textContent = cardToString(gameState.pile1);
-            pile2El.textContent = cardToString(gameState.pile2);
-            pile1El.style.color = gameState.pile1 ? (gameState.pile1.suit === 'Hearts' || gameState.pile1.suit === 'Diamonds' ? 'red' : 'black') : 'black';
-            pile2El.style.color = gameState.pile2 ? (gameState.pile2.suit === 'Hearts' || gameState.pile2.suit === 'Diamonds' ? 'red' : 'black') : 'black';
-
-            // Update stock counts
+            // Update stock pile counts
             document.getElementById('playerStockLabel').textContent = `Draw Pile: ${gameState.player1_stock.length} cards`;
             document.getElementById('aiStockLabel').textContent = `Draw Pile: ${gameState.player2_stock.length} cards`;
+
+            console.log("Updating center piles...");
+            console.log("Pile1:", gameState.pile1);
+            console.log("Pile2:", gameState.pile2);
+            
+            // Update center piles
+            const pile1CardEl = document.getElementById('pile1Card');
+            if (gameState.pile1) {
+                pile1CardEl.className = `card ${gameState.pile1.suit === 'Hearts' || gameState.pile1.suit === 'Diamonds' ? 'red' : 'black'}`;
+                pile1CardEl.textContent = Card.to_string(gameState.pile1);
+            } else {
+                pile1CardEl.className = 'card empty-pile';
+                pile1CardEl.textContent = 'Empty';
+            }
+            pile1CardEl.onclick = () => playSelectedCard(0);
+
+            const pile2CardEl = document.getElementById('pile2Card');
+            if (gameState.pile2) {
+                pile2CardEl.className = `card ${gameState.pile2.suit === 'Hearts' || gameState.pile2.suit === 'Diamonds' ? 'red' : 'black'}`;
+                pile2CardEl.textContent = Card.to_string(gameState.pile2);
+            } else {
+                pile2CardEl.className = 'card empty-pile';
+                pile2CardEl.textContent = 'Empty';
+            }
+            pile2CardEl.onclick = () => playSelectedCard(1);
+
+            // Update game log
+            const logEl = document.getElementById('gameLog');
+            logEl.innerHTML = '';
+            gameState.game_log.slice(0, 10).forEach(msg => {
+                const time = new Date().toLocaleTimeString();
+                logEl.innerHTML += `<div>[${time}] ${msg}</div>`;
+            });
+        }
+
+        // Helper functions for card interaction
+        function selectCard(card) {
+            selectedCard = card;
+            logMessage(`Selected card: ${Card.to_string(card)}`);
+            updateDisplay();
+        }
+
+        function playSelectedCard(pileIndex) {
+            if (!selectedCard) {
+                logMessage("No card selected to play!");
+                return;
+            }
+            if (gameState.current_player !== 'Player1') {
+                logMessage("It's not your turn!");
+                return;
+            }
+            playCard(selectedCard, pileIndex);
         }
 
         // Log message
@@ -240,57 +501,22 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        // Placeholder functions until OCaml compilation is set up
-        function createGamePlaceholder() {
-            // This will be replaced with OCaml create_game() function
-            return {
-                player1_hand: [],
-                player2_hand: [],
-                player1_stock: [],
-                player2_stock: [],
-                pile1: null,
-                pile2: null,
-                current_player: "Player1",
-                game_over: false,
-                winner: null
-            };
-        }
-
-        function makeMove(gameState, move) {
-            // This will be replaced with OCaml make_move() function
-            return { success: false, error: "OCaml compilation not set up" };
-        }
-
-        function getAllMoves(gameState) {
-            // This will be replaced with OCaml get_all_moves() function
-            return [];
-        }
-
-        function areBothPlayersStuck(gameState) {
-            // This will be replaced with OCaml are_both_players_stuck() function
-            return false;
-        }
-
-        function changeMiddleCards(gameState) {
-            // This will be replaced with OCaml change_middle_cards() function
-            return gameState;
-        }
-
-        function cardCanPlayOn(card, pileCard) {
-            // This will be replaced with OCaml card_can_play_on() function
-            return false;
-        }
-
-        function cardEquals(card1, card2) {
-            return card1.suit === card2.suit && card1.rank === card2.rank;
-        }
-
         // Event listeners
-        document.getElementById('newGameBtn').onclick = newGame;
+        document.getElementById('newGameBtn').onclick = () => {
+            console.log("New Game button clicked!");
+            newGame();
+        };
 
         // Initialize the game
+        console.log("Page loaded, initializing...");
         logMessage("Click 'New Game' to start playing Speed!");
-        logMessage("Note: OCaml compilation not yet set up - using placeholder functions");
+        
+        // Test if elements exist
+        console.log("Testing elements:");
+        console.log("newGameBtn:", document.getElementById('newGameBtn'));
+        console.log("pile1Card:", document.getElementById('pile1Card'));
+        console.log("pile2Card:", document.getElementById('pile2Card'));
+        console.log("playerHand:", document.getElementById('playerHand'));
     </script>
 
     <style>

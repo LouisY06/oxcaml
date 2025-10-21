@@ -10,7 +10,7 @@ module Card = struct
   type rank = 
     | Ace | Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten
     | Jack | Queen | King
-  [@@deriving sexp, compare, equal]
+  [@@deriving sexp, compare, equal, enumerate]
 
   type t = { suit : suit; rank : rank }
   [@@deriving sexp, compare, equal]
