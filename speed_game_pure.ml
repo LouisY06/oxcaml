@@ -29,9 +29,9 @@ module Card = struct
       let pile_val = rank_value pile_card.rank in
       
       (* Ace is wild - can play on King or 2 *)
-      if card.rank = Ace then
+      if Poly.(card.rank = Ace) then
         pile_val = 13 || pile_val = 2  (* King or 2 *)
-      else if pile_card.rank = Ace then
+      else if Poly.(pile_card.rank = Ace) then
         card_val = 13 || card_val = 2  (* King or 2 *)
       else
         (* Normal ±1 rule *)
@@ -112,16 +112,16 @@ module GameState = struct
         else if not (Card.can_play_on card pile_card) then
           Error "Invalid play"
         else
-          let hand = if game_state.current_player = "Player1" then game_state.player1_hand else game_state.player2_hand in
-          if not (List.mem hand card ~equal:Card.equal) then
+          let hand = if String.(game_state.current_player = "Player1") then game_state.player1_hand else game_state.player2_hand in
+          if not (List.exists hand ~f:(fun c -> Poly.(c.suit = card.suit && c.rank = card.rank))) then
             Error "Card not in hand"
           else
-            let new_hand = List.filter hand ~f:(fun c -> not (Card.equal c card)) in
+            let new_hand = List.filter hand ~f:(fun c -> not (Poly.(c.suit = card.suit && c.rank = card.rank))) in
             let new_pile1 = if pile = 0 then Some card else game_state.pile1 in
             let new_pile2 = if pile = 1 then Some card else game_state.pile2 in
             
             (* Auto-draw to maintain 5 cards *)
-            let stock = if game_state.current_player = "Player1" then game_state.player1_stock else game_state.player2_stock in
+            let stock = if String.(game_state.current_player = "Player1") then game_state.player1_stock else game_state.player2_stock in
             let new_stock = List.drop stock 1 in
             let new_hand_with_draw = if List.length new_hand < 5 && List.length stock > 0 then
               List.take stock 1 @ new_hand
@@ -131,10 +131,10 @@ module GameState = struct
             let game_over = List.is_empty new_hand_with_draw && List.is_empty new_stock in
             let winner = if game_over then Some game_state.current_player else None in
             
-            let new_player1_hand = if game_state.current_player = "Player1" then new_hand_with_draw else game_state.player1_hand in
-            let new_player2_hand = if game_state.current_player = "Player2" then new_hand_with_draw else game_state.player2_hand in
-            let new_player1_stock = if game_state.current_player = "Player1" then new_stock else game_state.player1_stock in
-            let new_player2_stock = if game_state.current_player = "Player2" then new_stock else game_state.player2_stock in
+            let new_player1_hand = if String.(game_state.current_player = "Player1") then new_hand_with_draw else game_state.player1_hand in
+            let new_player2_hand = if String.(game_state.current_player = "Player2") then new_hand_with_draw else game_state.player2_hand in
+            let new_player1_stock = if String.(game_state.current_player = "Player1") then new_stock else game_state.player1_stock in
+            let new_player2_stock = if String.(game_state.current_player = "Player2") then new_stock else game_state.player2_stock in
             
             Ok {
               player1_hand = new_player1_hand;
@@ -143,13 +143,13 @@ module GameState = struct
               player2_stock = new_player2_stock;
               pile1 = new_pile1;
               pile2 = new_pile2;
-              current_player = if game_state.current_player = "Player1" then "Player2" else "Player1";
+              current_player = if String.(game_state.current_player = "Player1") then "Player2" else "Player1";
               game_over;
               winner;
             }
       | Move.Draw_cards ->
-        let stock = if game_state.current_player = "Player1" then game_state.player1_stock else game_state.player2_stock in
-        let hand = if game_state.current_player = "Player1" then game_state.player1_hand else game_state.player2_hand in
+        let stock = if String.(game_state.current_player = "Player1") then game_state.player1_stock else game_state.player2_stock in
+        let hand = if String.(game_state.current_player = "Player1") then game_state.player1_hand else game_state.player2_hand in
         if List.is_empty stock then
           Error "No cards to draw"
         else if List.length hand >= 5 then
@@ -157,10 +157,10 @@ module GameState = struct
         else
           let new_stock = List.drop stock 1 in
           let new_hand = List.hd_exn stock :: hand in
-          let new_player1_hand = if game_state.current_player = "Player1" then new_hand else game_state.player1_hand in
-          let new_player2_hand = if game_state.current_player = "Player2" then new_hand else game_state.player2_hand in
-          let new_player1_stock = if game_state.current_player = "Player1" then new_stock else game_state.player1_stock in
-          let new_player2_stock = if game_state.current_player = "Player2" then new_stock else game_state.player2_stock in
+          let new_player1_hand = if String.(game_state.current_player = "Player1") then new_hand else game_state.player1_hand in
+          let new_player2_hand = if String.(game_state.current_player = "Player2") then new_hand else game_state.player2_hand in
+          let new_player1_stock = if String.(game_state.current_player = "Player1") then new_stock else game_state.player1_stock in
+          let new_player2_stock = if String.(game_state.current_player = "Player2") then new_stock else game_state.player2_stock in
           
           Ok {
             player1_hand = new_player1_hand;
@@ -169,13 +169,13 @@ module GameState = struct
             player2_stock = new_player2_stock;
             pile1 = game_state.pile1;
             pile2 = game_state.pile2;
-            current_player = if game_state.current_player = "Player1" then "Player2" else "Player1";
+            current_player = if String.(game_state.current_player = "Player1") then "Player2" else "Player1";
             game_over = game_state.game_over;
             winner = game_state.winner;
           }
   
   let get_all_moves game_state =
-    let hand = if game_state.current_player = "Player1" then game_state.player1_hand else game_state.player2_hand in
+    let hand = if String.(game_state.current_player = "Player1") then game_state.player1_hand else game_state.player2_hand in
     let moves = List.concat_map hand ~f:(fun card ->
       let pile1_moves = if Option.is_some game_state.pile1 && Card.can_play_on card game_state.pile1 then
         [Move.play_card card 0]
@@ -185,7 +185,7 @@ module GameState = struct
       else [] in
       pile1_moves @ pile2_moves
     ) in
-    let stock = if game_state.current_player = "Player1" then game_state.player1_stock else game_state.player2_stock in
+    let stock = if String.(game_state.current_player = "Player1") then game_state.player1_stock else game_state.player2_stock in
     let draw_moves = if not (List.is_empty stock) && List.length hand < 5 then
       [Move.draw_cards]
     else [] in

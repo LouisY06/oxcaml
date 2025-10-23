@@ -14,7 +14,7 @@
             <h1>Speed Card Game</h1>
             <div class="game-status" id="gameStatus">Click 'New Game' to start!</div>
             <div class="game-controls">
-                <button id="newGameBtn">New Game</button>
+                <button id="newGameBtn" style="font-size: 1.2rem; padding: 15px 30px; background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">New Game</button>
             </div>
         </div>
         
@@ -116,7 +116,6 @@
                     player2_stock: deck.slice(25, 40),
                     pile1: deck[40],
                     pile2: deck[41],
-                    current_player: 'Player1',
                     game_over: false,
                     winner: null,
                     game_log: ["New game started! Two random cards placed in center piles."],
@@ -124,7 +123,7 @@
                 };
             },
 
-            make_move: (state, move) => {
+            make_move: (state, move, player) => {
                 let newState = { ...state };
                 let log_msg = "";
 
@@ -133,7 +132,7 @@
                 switch (move.type) {
                     case 'Play_card':
                         const { card, pile } = move;
-                        const hand = newState.current_player === 'Player1' ? newState.player1_hand : newState.player2_hand;
+                        const hand = player === 'Player1' ? newState.player1_hand : newState.player2_hand;
                         const pile_card = pile === 0 ? newState.pile1 : newState.pile2;
 
                         if (!hand.some(c => c.rank === card.rank && c.suit === card.suit)) {
@@ -147,7 +146,7 @@
                         }
 
                         // Remove card from hand
-                        if (newState.current_player === 'Player1') {
+                        if (player === 'Player1') {
                             newState.player1_hand = newState.player1_hand.filter(c => !(c.rank === card.rank && c.suit === card.suit));
                         } else {
                             newState.player2_hand = newState.player2_hand.filter(c => !(c.rank === card.rank && c.suit === card.suit));
@@ -160,25 +159,27 @@
                             newState.pile2 = card;
                         }
 
-                        log_msg = `${newState.current_player === 'Player1' ? 'You' : 'AI'} played ${Card.to_string(card)} on pile ${pile + 1}`;
+                        log_msg = `${player === 'Player1' ? 'You' : 'AI'} played ${Card.to_string(card)} on pile ${pile + 1}`;
                         newState.game_log = [log_msg, ...newState.game_log];
 
                         // Auto-draw
-                        newState = autoDrawCardsInternal(newState, newState.current_player === 'Player1' ? 1 : 2);
+                        newState = autoDrawCardsInternal(newState, player === 'Player1' ? 1 : 2);
 
                         // Check for win
-                        if ((newState.current_player === 'Player1' && newState.player1_hand.length === 0 && newState.player1_stock.length === 0) ||
-                            (newState.current_player === 'Player2' && newState.player2_hand.length === 0 && newState.player2_stock.length === 0)) {
+                        if ((player === 'Player1' && newState.player1_hand.length === 0 && newState.player1_stock.length === 0) ||
+                            (player === 'Player2' && newState.player2_hand.length === 0 && newState.player2_stock.length === 0)) {
                             newState.game_over = true;
-                            newState.winner = newState.current_player;
-                            newState.game_log = [`🎉 ${newState.current_player === 'Player1' ? 'You' : 'AI'} win!`, ...newState.game_log];
+                            newState.winner = player;
+                            const winMessage = `🎉 ${player === 'Player1' ? 'You' : 'AI'} win! ${player === 'Player1' ? 'You' : 'AI'} ran out of cards!`;
+                            newState.game_log = [winMessage, ...newState.game_log];
+                            console.log(winMessage);
                         }
                         newState.stuck_count = 0;
                         return { type: 'Ok', value: newState };
 
                     case 'Draw_cards':
-                        const drawPile = newState.current_player === 'Player1' ? newState.player1_stock : newState.player2_stock;
-                        const handToDraw = newState.current_player === 'Player1' ? newState.player1_hand : newState.player2_hand;
+                        const drawPile = player === 'Player1' ? newState.player1_stock : newState.player2_stock;
+                        const handToDraw = player === 'Player1' ? newState.player1_hand : newState.player2_hand;
 
                         if (drawPile.length === 0) {
                             return { type: 'Error', error: 'No_cards_to_draw' };
@@ -189,7 +190,7 @@
 
                         const drawnCard = drawPile.shift();
                         handToDraw.push(drawnCard);
-                        if (newState.current_player === 'Player1') {
+                        if (player === 'Player1') {
                             newState.player1_hand = handToDraw;
                             newState.player1_stock = drawPile;
                             log_msg = `You drew ${Card.to_string(drawnCard)}`;
@@ -205,9 +206,9 @@
                 return { type: 'Error', error: 'Unknown_move' };
             },
 
-            get_all_moves: (state) => {
+            get_all_moves: (state, player) => {
                 const moves = [];
-                const hand = state.current_player === 'Player1' ? state.player1_hand : state.player2_hand;
+                const hand = player === 'Player1' ? state.player1_hand : state.player2_hand;
 
                 hand.forEach(card => {
                     if (Card.can_play_on(card, state.pile1)) {
@@ -218,7 +219,7 @@
                     }
                 });
 
-                const drawPile = state.current_player === 'Player1' ? state.player1_stock : state.player2_stock;
+                const drawPile = player === 'Player1' ? state.player1_stock : state.player2_stock;
                 if (hand.length < 5 && drawPile.length > 0) {
                     moves.push(Move.Draw_cards());
                 }
@@ -244,6 +245,115 @@
                 return state;
             }
         };
+
+        // Function to announce win with prominent notification
+        function announceWin(winner) {
+            const winMessage = winner === 'Player1' ? 
+                '🎉 CONGRATULATIONS! YOU WIN! 🎉' : 
+                '😞 GAME OVER! AI WINS! 😞';
+            
+            // Add to game log
+            logMessage(winMessage);
+            
+            // Show browser alert for immediate attention
+            alert(winMessage);
+            
+            console.log(winMessage);
+        }
+
+        // Function to completely stop the game
+        function stopGameCompletely() {
+            console.log("Stopping game completely...");
+            
+            // Clear stuck check interval
+            if (stuckCheckInterval) {
+                clearInterval(stuckCheckInterval);
+                stuckCheckInterval = null;
+            }
+            
+            // Clear all AI timeouts
+            aiTimeouts.forEach(timeoutId => {
+                clearTimeout(timeoutId);
+            });
+            aiTimeouts = [];
+            
+            console.log("All intervals and timeouts cleared");
+        }
+
+        // Function to check for immediate wins (when players run out of cards)
+        function checkForImmediateWin() {
+            if (!gameState || gameState.game_over) return false;
+            
+            console.log("Checking for immediate wins:");
+            console.log("Player1 hand:", gameState.player1_hand.length, "stock:", gameState.player1_stock.length);
+            console.log("Player2 hand:", gameState.player2_hand.length, "stock:", gameState.player2_stock.length);
+            
+            // Check if Player 1 wins (runs out of cards)
+            if (gameState.player1_hand.length === 0 && gameState.player1_stock.length === 0) {
+                console.log("Player 1 wins!");
+                gameState.game_over = true;
+                gameState.winner = 'Player1';
+                gameState.game_log = ['🎉 You win! You ran out of cards!', ...gameState.game_log];
+                logMessage('🎉 You win! You ran out of cards!');
+                alert('🎉 YOU WIN! 🎉');
+                stopGameCompletely(); // Stop everything immediately
+                updateDisplay();
+                return true;
+            }
+            
+            // Check if Player 2 (AI) wins (runs out of cards)
+            if (gameState.player2_hand.length === 0 && gameState.player2_stock.length === 0) {
+                console.log("AI wins!");
+                gameState.game_over = true;
+                gameState.winner = 'Player2';
+                gameState.game_log = ['🎉 AI wins! AI ran out of cards!', ...gameState.game_log];
+                logMessage('🎉 AI wins! AI ran out of cards!');
+                alert('😞 AI WINS! 😞');
+                stopGameCompletely(); // Stop everything immediately
+                updateDisplay();
+                return true;
+            }
+            
+            return false;
+        }
+
+        // Function to check if both players are stuck and refresh cards if needed
+        function checkForStuckPlayers() {
+            if (!gameState || gameState.game_over) {
+                if (stuckCheckInterval) {
+                    clearInterval(stuckCheckInterval);
+                    stuckCheckInterval = null;
+                }
+                return;
+            }
+            
+            // First check for immediate wins
+            if (checkForImmediateWin()) {
+                return;
+            }
+            
+            const player1CanPlay = gameState.player1_hand.some(card =>
+                Card.can_play_on(card, gameState.pile1) || Card.can_play_on(card, gameState.pile2)
+            );
+            const player2CanPlay = gameState.player2_hand.some(card =>
+                Card.can_play_on(card, gameState.pile1) || Card.can_play_on(card, gameState.pile2)
+            );
+            
+            console.log("Checking stuck players:");
+            console.log("Player1 can play:", player1CanPlay);
+            console.log("Player2 can play:", player2CanPlay);
+            console.log("Player1 hand:", gameState.player1_hand.map(Card.to_string));
+            console.log("Player2 hand:", gameState.player2_hand.map(Card.to_string));
+            console.log("Pile1:", Card.to_string(gameState.pile1));
+            console.log("Pile2:", Card.to_string(gameState.pile2));
+            
+            if (!player1CanPlay && !player2CanPlay) {
+                console.log("Both players stuck! Refreshing cards...");
+                gameState = GameState.change_middle_cards(gameState);
+                logMessage(`Both players stuck! Changed middle cards to: ${Card.to_string(gameState.pile1)} and ${Card.to_string(gameState.pile2)}`);
+                updateDisplay();
+            }
+        }
 
         // Helper functions
         function createDeck() {
@@ -291,10 +401,24 @@
         let gameState = null;
         let selectedCard = null;
         let gameLog = ["Click 'New Game' to start playing Speed!"];
+        let stuckCheckInterval = null;
+        let aiTimeouts = []; // Track all AI timeouts to clear them when game ends
 
         // Initialize new game using working JavaScript implementation
         function newGame() {
             console.log("Starting new game...");
+            
+            // Clear any existing stuck check interval and AI timeouts
+            if (stuckCheckInterval) {
+                clearInterval(stuckCheckInterval);
+            }
+            
+            // Clear all AI timeouts
+            aiTimeouts.forEach(timeoutId => {
+                clearTimeout(timeoutId);
+            });
+            aiTimeouts = [];
+            
             gameState = GameState.create();
             console.log("Game state created:", gameState);
             selectedCard = null;
@@ -306,12 +430,16 @@
             console.log("Updating display...");
             updateDisplay();
             
+            // Start continuous stuck player checking
+            stuckCheckInterval = setInterval(checkForStuckPlayers, 2000); // Check every 2 seconds
+            
             // Start AI playing automatically
-            setTimeout(() => {
+            const initialTimeoutId = setTimeout(() => {
                 if (!gameState.game_over) {
                     aiPlayLoop();
                 }
-            }, 1000);
+            }, 3000);
+            aiTimeouts.push(initialTimeoutId);
         }
 
         // Play card using working JavaScript implementation
@@ -319,25 +447,41 @@
             if (!gameState || gameState.game_over) return;
             
             const move = Move.Play_card(card, pileIndex);
-            const result = GameState.make_move(gameState, move);
+            const result = GameState.make_move(gameState, move, 'Player1');
             
             if (result.type === 'Ok') {
                 logMessage(`You played ${Card.to_string(card)} on pile ${pileIndex + 1}`);
                 selectedCard = null;
                 
-                // Check if both players are stuck
-                if (GameState.are_both_players_stuck(gameState)) {
-                    gameState = GameState.change_middle_cards(gameState);
-                    logMessage(`Both players stuck! Changed middle cards to: ${Card.to_string(gameState.pile1)} and ${Card.to_string(gameState.pile2)}`);
+                gameState = result.value;
+                
+                // Check if game is over (win detected in make_move)
+                if (gameState.game_over) {
+                    console.log("Game over detected after player move");
+                    const winMsg = `🎉 ${gameState.winner === 'Player1' ? 'YOU WIN!' : 'AI WINS!'} 🎉`;
+                    logMessage(winMsg);
+                    alert(winMsg);
+                    stopGameCompletely();
+                    updateDisplay();
+                    return;
                 }
                 
-                gameState = result.value;
-                gameState.current_player = 'Player2'; // Switch to AI turn
                 updateDisplay();
                 
-                if (!gameState.game_over) {
-                    setTimeout(aiPlayLoop, 1000); // AI plays after a short delay
+                // Check for immediate wins after player move
+                if (checkForImmediateWin()) {
+                    console.log("Game over: player won");
+                    return;
                 }
+                
+                // Double-check: if game is over (AI might have won), stop
+                if (gameState.game_over) {
+                    console.log("Game over detected after player move");
+                    return;
+                }
+                
+                // Check for stuck players and refresh cards if needed
+                checkForStuckPlayers();
             } else {
                 logMessage(`Cannot play ${Card.to_string(card)} on pile ${pileIndex + 1}! Error: ${result.error}`);
             }
@@ -345,52 +489,108 @@
 
         // AI play loop using working JavaScript implementation
         function aiPlayLoop() {
-            if (!gameState || gameState.game_over) return;
-            if (gameState.current_player !== 'Player2') return;
+            if (!gameState || gameState.game_over) {
+                console.log("AI stopping: game is over");
+                return;
+            }
 
-            const availableMoves = GameState.get_all_moves(gameState);
+            // Check for immediate wins before AI plays
+            if (checkForImmediateWin()) {
+                console.log("AI stopping: immediate win detected");
+                return;
+            }
+
+            const availableMoves = GameState.get_all_moves(gameState, 'Player2');
             const playMoves = availableMoves.filter(m => m.type === 'Play_card');
 
             if (playMoves.length > 0) {
                 // Simple AI: play the first valid card
                 const bestMove = playMoves[0];
-                const result = GameState.make_move(gameState, bestMove);
+                const result = GameState.make_move(gameState, bestMove, 'Player2');
 
                 if (result.type === 'Ok') {
                     gameState = result.value;
                     logMessage(`AI played ${Card.to_string(bestMove.card)} on pile ${bestMove.pile + 1}`);
                     
-                    // Check for stuck players after a move
-                    if (GameState.are_both_players_stuck(gameState)) {
-                        gameState = GameState.change_middle_cards(gameState);
+                    // Check if game is over (win detected in make_move)
+                    if (gameState.game_over) {
+                        console.log("AI stopping: game over detected after move");
+                        const winMsg = `🎉 ${gameState.winner === 'Player1' ? 'YOU WIN!' : 'AI WINS!'} 🎉`;
+                        logMessage(winMsg);
+                        alert(winMsg);
+                        stopGameCompletely();
+                        updateDisplay();
+                        return;
                     }
+                    
+                    // Check for immediate wins after AI move
+                    if (checkForImmediateWin()) {
+                        console.log("AI stopping: win detected after move");
+                        return;
+                    }
+                    
+                    // Double-check: if game is over, stop immediately
+                    if (gameState.game_over) {
+                        console.log("AI stopping: game over detected");
+                        return;
+                    }
+                    
+                    // Check for stuck players after a move
+                    checkForStuckPlayers();
 
-                    gameState.current_player = 'Player1'; // Switch to Player 1 turn
                     updateDisplay();
+                    
+                    // Continue AI loop after a short delay (only if game not over)
+                    if (!gameState.game_over) {
+                        const timeoutId = setTimeout(aiPlayLoop, 2000);
+                        aiTimeouts.push(timeoutId);
+                    } else {
+                        console.log("AI stopping: game over, not scheduling next move");
+                    }
                 } else {
                     logMessage(`AI failed to play: ${result.error}`);
-                    gameState.current_player = 'Player1';
-                    updateDisplay();
+                    // Try again after a short delay
+                    if (!gameState.game_over) {
+                        const timeoutId = setTimeout(aiPlayLoop, 2500);
+                        aiTimeouts.push(timeoutId);
+                    }
                 }
             } else {
                 // If AI has no play moves, it tries to draw if possible
                 const drawMove = availableMoves.find(m => m.type === 'Draw_cards');
                 if (drawMove) {
-                    const result = GameState.make_move(gameState, drawMove);
+                    const result = GameState.make_move(gameState, drawMove, 'Player2');
                     if (result.type === 'Ok') {
                         gameState = result.value;
                         logMessage("AI drew a card");
                         updateDisplay();
-                        setTimeout(aiPlayLoop, 500); // Give AI a chance to play after drawing
+                        
+                        // Check for immediate wins after drawing
+                        if (checkForImmediateWin()) {
+                            console.log("AI stopping: win detected after draw");
+                            return;
+                        }
+                        
+                        // Double-check: if game is over, stop immediately
+                        if (gameState.game_over) {
+                            console.log("AI stopping: game over detected after draw");
+                            return;
+                        }
+                        
+                        if (!gameState.game_over) {
+                            const timeoutId = setTimeout(aiPlayLoop, 2000); // Give AI a chance to play after drawing
+                            aiTimeouts.push(timeoutId);
+                        }
                         return;
                     } else {
                         logMessage(`AI failed to draw: ${result.error}`);
                     }
                 }
-                // If AI can't play or draw, it's stuck, switch turn back to player
-                logMessage("AI has no moves, switching to your turn.");
-                gameState.current_player = 'Player1';
-                updateDisplay();
+                // If AI can't play or draw, wait a bit and try again
+                if (!gameState.game_over) {
+                    const timeoutId = setTimeout(aiPlayLoop, 2500);
+                    aiTimeouts.push(timeoutId);
+                }
             }
         }
 
@@ -406,9 +606,22 @@
             // Update game status
             const statusEl = document.getElementById('gameStatus');
             if (gameState.game_over) {
-                statusEl.textContent = gameState.winner === 'Player1' ? 'You Win!' : 'AI Wins!';
+                if (gameState.winner === 'Player1') {
+                    statusEl.textContent = '🎉 YOU WIN! 🎉';
+                    statusEl.style.color = '#28a745';
+                    statusEl.style.fontSize = '1.5rem';
+                    statusEl.style.fontWeight = 'bold';
+                } else {
+                    statusEl.textContent = '😞 AI WINS! 😞';
+                    statusEl.style.color = '#dc3545';
+                    statusEl.style.fontSize = '1.5rem';
+                    statusEl.style.fontWeight = 'bold';
+                }
             } else {
-                statusEl.textContent = `Current Player: ${gameState.current_player === 'Player1' ? 'You' : 'AI'}`;
+                statusEl.textContent = 'Speed Game - Play simultaneously!';
+                statusEl.style.color = 'black';
+                statusEl.style.fontSize = '1rem';
+                statusEl.style.fontWeight = 'normal';
             }
 
             console.log("Updating player hands...");
@@ -419,7 +632,15 @@
                 const cardEl = document.createElement('div');
                 cardEl.className = `card ${card.suit === 'Hearts' || card.suit === 'Diamonds' ? 'red' : 'black'}`;
                 cardEl.textContent = Card.to_string(card);
-                cardEl.onclick = () => selectCard(card);
+                
+                // Only allow card selection if game is not over
+                if (!gameState.game_over) {
+                    cardEl.onclick = () => selectCard(card);
+                } else {
+                    cardEl.style.opacity = '0.5';
+                    cardEl.style.cursor = 'not-allowed';
+                }
+                
                 if (selectedCard && selectedCard.rank === card.rank && selectedCard.suit === card.suit) {
                     cardEl.classList.add('selected');
                 }
@@ -453,7 +674,13 @@
                 pile1CardEl.className = 'card empty-pile';
                 pile1CardEl.textContent = 'Empty';
             }
-            pile1CardEl.onclick = () => playSelectedCard(0);
+            // Only allow pile interaction if game is not over
+            if (!gameState.game_over) {
+                pile1CardEl.onclick = () => playSelectedCard(0);
+            } else {
+                pile1CardEl.style.opacity = '0.5';
+                pile1CardEl.style.cursor = 'not-allowed';
+            }
 
             const pile2CardEl = document.getElementById('pile2Card');
             if (gameState.pile2) {
@@ -463,7 +690,14 @@
                 pile2CardEl.className = 'card empty-pile';
                 pile2CardEl.textContent = 'Empty';
             }
-            pile2CardEl.onclick = () => playSelectedCard(1);
+            
+            // Only allow pile interaction if game is not over
+            if (!gameState.game_over) {
+                pile2CardEl.onclick = () => playSelectedCard(1);
+            } else {
+                pile2CardEl.style.opacity = '0.5';
+                pile2CardEl.style.cursor = 'not-allowed';
+            }
 
             // Update game log
             const logEl = document.getElementById('gameLog');
@@ -484,10 +718,6 @@
         function playSelectedCard(pileIndex) {
             if (!selectedCard) {
                 logMessage("No card selected to play!");
-                return;
-            }
-            if (gameState.current_player !== 'Player1') {
-                logMessage("It's not your turn!");
                 return;
             }
             playCard(selectedCard, pileIndex);
