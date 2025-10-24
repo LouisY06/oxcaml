@@ -302,7 +302,7 @@ module Components = struct
          ~attrs:[ Attr.create "class" "game-container" ]
          [ Node.div
               ~attrs:[ Attr.create "class" "game-header" ]
-              [ Node.h1 [ Node.text "Speed Card Game (OCaml + Bonsai)" ]
+              [ Node.h1 [ Node.text "Speed Card Game" ]
               ; Node.div ~attrs:[ Attr.create "class" "game-status"; Attr.create "id" "gameStatus" ]
                    [ Node.text model.game_message ]
               ; Node.div
