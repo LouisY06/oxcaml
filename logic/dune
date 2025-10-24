@@ -1,0 +1,9 @@
+ (library
+	(name speed_logic_library)
+	(libraries core)
+	(preprocess (pps ppx_jane))
+	;; Exclude test modules from the library so they don't create cyclic deps.
+	(modules (:standard \ hw3_speed_logic_test))
+	;; Suppress unused-value and unused-open warnings which are treated as errors
+	;; in the current build profile to allow building student test files.
+	(flags (:standard -w -32-33)))
