@@ -368,12 +368,12 @@ let app =
       ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
   in
 
-  (* Periodic AI update every 1000ms (1 second) - AI plays 1 card per second *)
+  (* Periodic AI update every 2000ms (2 seconds) - AI plays 1 card every 2 seconds *)
   let%sub () =
     Bonsai.Clock.every
       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
       ~trigger_on_activate:true
-      (Time_ns.Span.of_ms 1000.0)
+      (Time_ns.Span.of_ms 2000.0)
       (let%map inject = inject in
        inject Action.Trigger_periodic_update)
   in
