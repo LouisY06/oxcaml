@@ -31,9 +31,23 @@ module Enhanced_game_state = struct
     }
   ;;
 
-  (* Make move with enhanced logging *)
+  (* Make move with enhanced logging - SIMULTANEOUS MODE (no turns!) *)
   let make_move enhanced_state (move : Move.t) (player : string) : (t, string) Result.t =
-    let result = Game_state.make_move enhanced_state.base_state move in
+    (* In simultaneous mode, we need to handle moves differently *)
+    let base = enhanced_state.base_state in
+    
+    (* Determine which player is making the move *)
+    let player_enum = 
+      match player with
+      | "Player1" -> Player.Player1
+      | "Player2" -> Player.Player2
+      | _ -> Player.Player1
+    in
+    
+    (* For simultaneous mode, temporarily set current_player to the acting player *)
+    let temp_state = { base with current_player = player_enum } in
+    let result = Game_state.make_move temp_state move in
+    
     match result with
     | Ok new_base_state ->
       let move_str =
