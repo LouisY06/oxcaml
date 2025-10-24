@@ -266,7 +266,12 @@ module Components = struct
             [ Node.div ~attrs:[ Attr.create "class" "pile-label" ]
                  [ Node.text (Printf.sprintf "Pile %d" (pile_index + 1)) ]
             ; (match pile_card_opt with
-               | Some card -> card_to_html card false false ~inject  (* NOT a player card! Don't make it clickable! *)
+               | Some card -> 
+                  (* Render pile card with pointer-events: none to prevent ANY clicks *)
+                  let pile_card_html = card_to_html card false false ~inject in
+                  Node.div 
+                     ~attrs:[ Attr.create "style" "pointer-events: none;" ]
+                     [ pile_card_html ]
                | None -> 
                   Node.div 
                      ~attrs:[ Attr.create "class" "card empty-pile" ] 
