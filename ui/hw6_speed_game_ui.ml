@@ -79,12 +79,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       if model.enhanced_state.base_state.game_over then
          model
       else
-        let () = Stdio.printf "🎯 SELECTED CARD: %s\n" (Hw2_speed_logic.Card.to_string card) in
-        let () = Stdio.printf "   Current hand has %d cards:\n" (List.length model.enhanced_state.base_state.player1_hand) in
-        let () = List.iteri model.enhanced_state.base_state.player1_hand ~f:(fun i c ->
-          Stdio.printf "     [%d] %s (same as selected? %b)\n" i (Hw2_speed_logic.Card.to_string c) (Hw2_speed_logic.Card.equal c card)) in
-        let () = Stdio.printf "%!" in
-      { model with 
+        { model with 
             selected_card = Some card
           ; game_message = "Card selected! Click on a center pile to play it."
           }
@@ -98,9 +93,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              { model with game_message = "Select a card from your hand first!" }
           | Some card ->
              let player_id = "Player1" in
-               let () = Stdio.printf "🎮 Playing card: %s on pile %d\n%!" 
-                 (Hw2_speed_logic.Card.to_string card) pile_index in
-               let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
+             let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
                (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
               | Ok new_enhanced_state ->
                  (* Auto-draw after playing - fill hand back to 5 *)
@@ -114,12 +107,12 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                     | Some Hw2_speed_logic.Player.Player1 -> 
                        { enhanced_state = state_after_stuck_check
                        ; selected_card = None
-                       ; game_message = "🎉 YOU WIN! 🎉 All cards played! Click 'New Game' to play again."
+                       ; game_message = "YOU WIN! All cards played! Click 'New Game' to play again."
                        }
                     | Some Hw2_speed_logic.Player.Player2 ->
                        { enhanced_state = state_after_stuck_check
                        ; selected_card = None
-                       ; game_message = "😞 AI WINS! 😞 AI played all cards first. Click 'New Game' to try again."
+                       ; game_message = "AI WINS! AI played all cards first. Click 'New Game' to try again."
                        }
                     | None ->
                        { enhanced_state = state_after_stuck_check
@@ -132,8 +125,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                    ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
                    }
               | Error msg ->
-                 let () = Stdio.printf "❌ Error playing card: %s\n%!" msg in
-        { model with 
+                 { model with 
                    game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
                  }))
    
@@ -165,15 +157,15 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          if final_state.base_state.game_over then
            (match final_state.base_state.winner with
             | Some Hw2_speed_logic.Player.Player1 -> 
-               { enhanced_state = final_state
-               ; selected_card = None
-               ; game_message = "🎉 YOU WIN! 🎉 All cards played!"
-               }
+              { enhanced_state = final_state
+              ; selected_card = None
+              ; game_message = "YOU WIN! All cards played!"
+              }
             | Some Hw2_speed_logic.Player.Player2 ->
-               { enhanced_state = final_state
-               ; selected_card = None
-               ; game_message = "😞 AI WINS! 😞 AI was too fast!"
-               }
+              { enhanced_state = final_state
+              ; selected_card = None
+              ; game_message = "AI WINS! AI was too fast!"
+              }
             | None ->
                { enhanced_state = final_state
                ; selected_card = None
@@ -376,12 +368,12 @@ let app =
       ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
   in
 
-  (* Periodic AI update every 300ms *)
+  (* Periodic AI update every 200ms - AI plays fast! *)
   let%sub () =
     Bonsai.Clock.every
       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
       ~trigger_on_activate:true
-      (Time_ns.Span.of_ms 300.0)
+      (Time_ns.Span.of_ms 200.0)
       (let%map inject = inject in
        inject Action.Trigger_periodic_update)
   in

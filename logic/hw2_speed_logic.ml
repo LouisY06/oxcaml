@@ -44,23 +44,6 @@ module Enhanced_game_state = struct
       | _ -> Player.Player1
     in
     
-    (* Debug: print current hand *)
-    let current_hand = 
-      match player_enum with
-      | Player.Player1 -> base.player1_hand
-      | Player.Player2 -> base.player2_hand
-    in
-    let () = 
-      match move with
-      | Move.Play_card { card; pile = _ } ->
-        Stdio.printf "🔍 Checking if card %s is in hand. Hand has %d cards:\n" 
-          (Card.to_string card) (List.length current_hand);
-        List.iteri current_hand ~f:(fun i c ->
-          Stdio.printf "  [%d] %s (equal? %b)\n" i (Card.to_string c) (Card.equal c card));
-        Stdio.printf "%!"
-      | _ -> ()
-    in
-    
     (* For simultaneous mode, temporarily set current_player to the acting player *)
     let temp_state = { base with current_player = player_enum } in
     let result = Game_state.make_move temp_state move in
