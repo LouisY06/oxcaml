@@ -228,7 +228,7 @@ module Components = struct
             ; (if is_player_card then on_click (fun _ -> inject (Action.Select_card card)) else Attr.empty)
             ; Attr.create "style" ("color: " ^ suit_color ^ "; cursor: " ^ (if is_player_card then "pointer" else "default"))
             ]
-         [ Node.text (if is_player_card then rank_str ^ suit_symbol else "🂠") ]
+         [ Node.text (if is_player_card then rank_str ^ suit_symbol else "?") ]
 
    let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Hw2_speed_logic in
@@ -289,22 +289,22 @@ module Components = struct
          ~attrs:[ Attr.create "class" "game-container" ]
          [ Node.div
               ~attrs:[ Attr.create "class" "game-header" ]
-              [ Node.h1 [ Node.text "⚡ Speed Card Game ⚡ (OCaml + Bonsai)" ]
+              [ Node.h1 [ Node.text "Speed Card Game (OCaml + Bonsai)" ]
               ; Node.div ~attrs:[ Attr.create "class" "game-status"; Attr.create "id" "gameStatus" ]
                    [ Node.text model.game_message ]
               ; Node.div
                    ~attrs:[ Attr.create "class" "game-controls" ]
                    [ Node.button 
                         ~attrs:[ on_click (fun _ -> inject Action.New_game)
-                               ; Attr.create "style" "background-color: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 5px; font-size: 16px;"
+                               ; Attr.create "style" "padding: 10px 20px; border: 2px solid black; cursor: pointer; border-radius: 5px; font-size: 16px; background: white;"
                                ] 
-                        [ Node.text "🔄 New Game" ]
+                        [ Node.text "New Game" ]
                    ]
               ]
          ; Node.div
               ~attrs:[ Attr.create "class" "game-board" ]
               [ Node.div ~attrs:[ Attr.create "class" "player-area player2-area" ]
-                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] [ Node.text "🤖 AI Player" ]
+                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] [ Node.text "AI Player" ]
                    ; ai_hand_html
                    ; Node.div ~attrs:[ Attr.create "class" "stock-pile" ]
                         [ Node.div ~attrs:[ Attr.create "class" "stock-label" ]
@@ -313,13 +313,13 @@ module Components = struct
                                      (List.length model.enhanced_state.base_state.player2_stock))
                              ]
                         ; Node.div ~attrs:[ Attr.create "class" "card face-down stock" ]
-                             [ Node.text "🂠" ]
+                             [ Node.text "?" ]
                         ]
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "center-area" ]
                    [ Node.div ~attrs:[ Attr.create "class" "pile-area" ] [ pile1_html; pile2_html ] ]
               ; Node.div ~attrs:[ Attr.create "class" "player-area player1-area" ]
-                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] [ Node.text "👤 You (Player 1)" ]
+                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] [ Node.text "You (Player 1)" ]
                    ; player_hand_html
                    ; Node.div ~attrs:[ Attr.create "class" "stock-pile" ]
                         [ Node.div ~attrs:[ Attr.create "class" "stock-label" ]
@@ -328,7 +328,7 @@ module Components = struct
                                      (List.length model.enhanced_state.base_state.player1_stock))
                              ]
                         ; Node.div ~attrs:[ Attr.create "class" "card face-down stock" ]
-                             [ Node.text "🂠" ]
+                             [ Node.text "?" ]
                         ]
                    ]
               ]
