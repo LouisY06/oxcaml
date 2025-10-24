@@ -111,8 +111,20 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
                (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
               | Ok new_enhanced_state ->
+                 let () = Stdio.printf "After play - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+                   (List.length new_enhanced_state.base_state.player1_hand)
+                   (List.length new_enhanced_state.base_state.player1_stock)
+                   (List.length new_enhanced_state.base_state.player2_hand)
+                   (List.length new_enhanced_state.base_state.player2_stock)
+                   new_enhanced_state.base_state.game_over in
                  (* Auto-draw after playing - fill hand back to 5 *)
                  let state_after_draw = auto_draw_until_full new_enhanced_state player_id in
+                 let () = Stdio.printf "After draw - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+                   (List.length state_after_draw.base_state.player1_hand)
+                   (List.length state_after_draw.base_state.player1_stock)
+                   (List.length state_after_draw.base_state.player2_hand)
+                   (List.length state_after_draw.base_state.player2_stock)
+                   state_after_draw.base_state.game_over in
                  (* Check if stuck *)
                  let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
@@ -168,9 +180,20 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          in
          
          let final_state = ai_play_all state_with_draws 1 in
+         let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+           (List.length final_state.base_state.player1_hand)
+           (List.length final_state.base_state.player1_stock)
+           (List.length final_state.base_state.player2_hand)
+           (List.length final_state.base_state.player2_stock)
+           final_state.base_state.game_over in
          
          if final_state.base_state.game_over then
-           (match final_state.base_state.winner with
+           (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
+             (match final_state.base_state.winner with
+              | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
+              | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
+              | None -> "None") in
+            match final_state.base_state.winner with
             | Some Hw2_speed_logic.Player.Player1 -> 
               { enhanced_state = final_state
               ; selected_card = None
