@@ -84,7 +84,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         let () = List.iteri model.enhanced_state.base_state.player1_hand ~f:(fun i c ->
           Stdio.printf "     [%d] %s (same as selected? %b)\n" i (Hw2_speed_logic.Card.to_string c) (Hw2_speed_logic.Card.equal c card)) in
         let () = Stdio.printf "%!" in
-        { model with 
+      { model with 
             selected_card = Some card
           ; game_message = "Card selected! Click on a center pile to play it."
           }
@@ -192,7 +192,7 @@ module Components = struct
    open Attr
 
    (* Helper to render a card *)
-   let card_to_html card is_selected is_player_card ~inject =
+   let card_to_html card is_selected is_player_card is_face_down ~inject =
       let suit_symbol = match card.Hw2_speed_logic.Card.suit with
          | Hw2_speed_logic.Card.Hearts -> "♥"
          | Hw2_speed_logic.Card.Diamonds -> "♦"
@@ -221,7 +221,7 @@ module Components = struct
       
       let base_classes = ["card"] in
       let classes = if is_selected then "selected" :: base_classes else base_classes in
-      let classes = if not is_player_card then "face-down" :: classes else classes in
+      let classes = if is_face_down then "face-down" :: classes else classes in
       
       Node.div
          ~attrs:
@@ -229,7 +229,7 @@ module Components = struct
             ; (if is_player_card then on_click (fun _ -> inject (Action.Select_card card)) else Attr.empty)
             ; Attr.create "style" ("color: " ^ suit_color ^ "; cursor: " ^ (if is_player_card then "pointer" else "default"))
             ]
-         [ Node.text (if is_player_card then rank_str ^ suit_symbol else "?") ]
+         [ Node.text (if is_face_down then "?" else rank_str ^ suit_symbol) ]
 
    let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Hw2_speed_logic in
@@ -242,7 +242,7 @@ module Components = struct
             (List.map model.enhanced_state.base_state.player1_hand ~f:(fun card ->
                  card_to_html card
                     (Option.equal Card.equal model.selected_card (Some card))
-                    true ~inject))
+                    true false ~inject))
       in
 
       (* AI hand (face down) *)
@@ -250,7 +250,7 @@ module Components = struct
          Node.div
             ~attrs:[ Attr.create "class" "hand"; Attr.create "id" "aiHand" ]
             (List.map model.enhanced_state.base_state.player2_hand ~f:(fun card ->
-                 card_to_html card false false ~inject))
+                 card_to_html card false false true ~inject))
       in
 
       (* Center piles *)
@@ -267,8 +267,8 @@ module Components = struct
                  [ Node.text (Printf.sprintf "Pile %d" (pile_index + 1)) ]
             ; (match pile_card_opt with
                | Some card -> 
-                  (* Render pile card with pointer-events: none to prevent ANY clicks *)
-                  let pile_card_html = card_to_html card false false ~inject in
+                  (* Render pile card - SHOW THE CARD but make it unclickable! *)
+                  let pile_card_html = card_to_html card false false false ~inject in
                   Node.div 
                      ~attrs:[ Attr.create "style" "pointer-events: none;" ]
                      [ pile_card_html ]
