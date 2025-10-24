@@ -36,46 +36,9 @@
     <!-- Include the compiled Bonsai JavaScript -->
     <script src="hw6_speed_game_app.bc.js"></script>
     <script>
-        // AI continuous play loop
-        let aiLoopInterval = null;
-        
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, starting AI loop...');
-            
-            // Start AI loop after a brief delay to let Bonsai initialize
-            setTimeout(function() {
-                console.log('Starting continuous AI play...');
-                
-                // AI plays every 200ms (5 times per second) - very fast!
-                aiLoopInterval = setInterval(function() {
-                    const appElement = document.getElementById('app');
-                    if (appElement) {
-                        // Check if game is over by looking for win message
-                        const statusElement = document.getElementById('gameStatus');
-                        if (statusElement && !statusElement.textContent.includes('WIN')) {
-                            // Trigger AI move by simulating a click event
-                            // The Bonsai app will handle the AI logic
-                            const event = new CustomEvent('ai-move-trigger');
-                            document.dispatchEvent(event);
-                        }
-                    }
-                }, 200); // AI plays every 200ms
-                
-                console.log('AI loop started - AI will play continuously!');
-            }, 2000);
-        });
-        
-        // Clean up on page unload
-        window.addEventListener('beforeunload', function() {
-            if (aiLoopInterval) {
-                clearInterval(aiLoopInterval);
-            }
-        });
-        
-        // Catch any JavaScript errors
-        window.addEventListener('error', function(event) {
-            console.error('JavaScript error:', event.error);
-        });
+        // Bonsai handles the game loop in OCaml using Clock.every
+        // AI updates every 300ms automatically!
+        console.log('⚡ Speed Card Game - AI plays continuously via Bonsai Clock!');
     </script>
 </body>
 </html>

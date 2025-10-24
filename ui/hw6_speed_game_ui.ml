@@ -30,6 +30,7 @@ module Action = struct
       | Select_card of Hw2_speed_logic.Card.t
       | Play_on_pile of int (* pile index 0 or 1 *)
       | AI_move_continuous (* AI plays continuously *)
+      | Trigger_periodic_update (* Periodic game update *)
   [@@deriving sexp, compare]
 end
 
@@ -141,47 +142,58 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                    game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
                  }))
    
-   | AI_move_continuous ->
+   | AI_move_continuous | Trigger_periodic_update ->
       if model.enhanced_state.base_state.game_over then
          model
       else
-         (* AI tries to make a move *)
-         (match Hw2_speed_logic.Enhanced_game_state.ai_choose_move model.enhanced_state with
-          | Some ai_move ->
-             let player_id = "Player2" in
-             (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state ai_move player_id with
-              | Ok new_enhanced_state ->
-                 (* Auto-draw for AI *)
-                 let state_after_draw = auto_draw_if_needed new_enhanced_state player_id in
-                 (* Check if stuck *)
-                 let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
-                 
-                 if state_after_stuck_check.base_state.game_over then
-                   (match state_after_stuck_check.base_state.winner with
-                    | Some Hw2_speed_logic.Player.Player1 -> 
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "🎉 YOU WIN! 🎉 All cards played!"
-                       }
-                    | Some Hw2_speed_logic.Player.Player2 ->
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "😞 AI WINS! 😞 AI was too fast!"
-                       }
-                    | None ->
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "Game Over!"
-                       })
-                 else
-                   { enhanced_state = state_after_stuck_check
-                   ; selected_card = model.selected_card
-                   ; game_message = if String.is_empty stuck_msg then model.game_message else stuck_msg
-                   }
-              | Error _msg -> 
-                 model)
-          | None -> 
-             model)
+         (* AI tries to play as many cards as possible *)
+         let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
+           if max_moves <= 0 || enh_state.base_state.game_over then
+             enh_state
+           else
+             (* First auto-draw for AI if needed *)
+             let state_with_ai_draw = auto_draw_if_needed enh_state "Player2" in
+             (* Then try to make a move *)
+             match Hw2_speed_logic.Enhanced_game_state.ai_choose_move state_with_ai_draw with
+             | Some ai_move ->
+                (match Hw2_speed_logic.Enhanced_game_state.make_move state_with_ai_draw ai_move "Player2" with
+                 | Ok new_state ->
+                    (* Check if stuck after AI move *)
+                    let state_after_stuck, _ = check_and_refresh_if_stuck new_state in
+                    (* Continue playing more cards *)
+                    ai_play_all state_after_stuck (max_moves - 1)
+                 | Error _ -> state_with_ai_draw)
+             | None -> state_with_ai_draw
+         in
+         
+         (* Let AI play up to 5 cards per update cycle *)
+         let final_state = ai_play_all model.enhanced_state 5 in
+         
+         (* Also auto-draw for player if needed *)
+         let state_with_player_draw = auto_draw_if_needed final_state "Player1" in
+         
+         if state_with_player_draw.base_state.game_over then
+           (match state_with_player_draw.base_state.winner with
+            | Some Hw2_speed_logic.Player.Player1 -> 
+               { enhanced_state = state_with_player_draw
+               ; selected_card = None
+               ; game_message = "🎉 YOU WIN! 🎉 All cards played!"
+               }
+            | Some Hw2_speed_logic.Player.Player2 ->
+               { enhanced_state = state_with_player_draw
+               ; selected_card = None
+               ; game_message = "😞 AI WINS! 😞 AI was too fast!"
+               }
+            | None ->
+               { enhanced_state = state_with_player_draw
+               ; selected_card = None
+               ; game_message = "Game Over!"
+               })
+         else
+           { enhanced_state = state_with_player_draw
+           ; selected_card = model.selected_card
+           ; game_message = model.game_message
+           }
 ;;
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
@@ -361,6 +373,20 @@ let app =
    let%sub model, inject =
       Bonsai.state (module Model) ~default_model:Model.initial
    in
+   
+   (* Set up periodic AI updates using Bonsai.Clock.every *)
+   let%sub () =
+     Bonsai.Clock.every
+       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
+       ~trigger_on_activate:true
+       (Time_ns.Span.of_ms 300.0)
+       (let%map inject = inject and model = model in
+        if not model.enhanced_state.base_state.game_over then
+          inject (apply_action Action.Trigger_periodic_update model)
+        else
+          Effect.Ignore)
+   in
+   
    let%arr model = model and inject = inject in
    let inject_action action = inject (apply_action action model) in
    Components.view model inject_action
