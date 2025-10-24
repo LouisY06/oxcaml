@@ -93,6 +93,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              { model with game_message = "Select a card from your hand first!" }
           | Some card ->
              let player_id = "Player1" in
+             let () = Stdio.printf "🎮 Playing card: %s on pile %d\n%!" 
+               (Hw2_speed_logic.Card.to_string card) pile_index in
              let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
              (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
               | Ok new_enhanced_state ->
@@ -124,7 +126,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                    ; selected_card = None
                    ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
                    }
-              | Error msg -> 
+              | Error msg ->
+                 let () = Stdio.printf "❌ Error playing card: %s\n%!" msg in
         { model with 
                    game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
                  }))
