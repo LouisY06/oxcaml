@@ -13,7 +13,6 @@ module Model = struct
       { enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
       ; selected_card : Hw2_speed_logic.Card.t option
       ; game_message : string
-      ; countdown : int option  (* None = no countdown, Some n = counting down from n *)
   }
   [@@deriving sexp, compare, equal]
 
@@ -21,7 +20,6 @@ module Model = struct
       { enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
       ; selected_card = None
       ; game_message = "Welcome! Click on your card, then click on a center pile to play!"
-      ; countdown = None
       }
    ;;
 end
@@ -33,8 +31,6 @@ module Action = struct
     | Play_on_pile of int (* pile index 0 or 1 *)
     | AI_move_continuous (* AI plays continuously *)
     | Trigger_periodic_update (* Periodic game update *)
-    | Start_refresh_countdown
-    | Countdown_tick
   [@@deriving sexp, compare]
 end
 
@@ -60,9 +56,9 @@ let auto_draw_until_full (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
   draw_loop enhanced_state
 ;;
 
-(* Check if both players are stuck - returns (state, is_stuck, message) *)
-let check_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) 
-  : Hw2_speed_logic.Enhanced_game_state.t * bool * string =
+(* Check if both players are stuck and refresh cards if needed *)
+let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) 
+  : Hw2_speed_logic.Enhanced_game_state.t * string =
   let is_stuck = Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck enhanced_state in
   let () = Stdio.printf "\n=== HANDS CHECK ===\n" in
   let () = Stdio.printf "Player 1 hand: " in
@@ -75,7 +71,14 @@ let check_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t)
     (match enhanced_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
     (match enhanced_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
   let () = Stdio.printf "Both stuck? %b\n%!" is_stuck in
-  (enhanced_state, is_stuck, if is_stuck then "Both players stuck!" else "")
+  if is_stuck then
+    let new_state = Hw2_speed_logic.Enhanced_game_state.refresh_center_cards enhanced_state in
+    let () = Stdio.printf "🔄 REFRESHING PILES! New Pile 1: %s | New Pile 2: %s\n%!"
+      (match new_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
+      (match new_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
+    (new_state, "Both players stuck! Center cards refreshed.")
+  else
+    (enhanced_state, "")
 ;;
 
 let apply_action (action : Action.t) (model : Model.t) : Model.t =
@@ -85,7 +88,6 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { enhanced_state = new_enhanced_state
       ; selected_card = None
       ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
-      ; countdown = None
     }
   
   | Select_card card ->
@@ -124,48 +126,30 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                    (List.length state_after_draw.base_state.player2_stock)
                    state_after_draw.base_state.game_over in
                  (* Check if stuck *)
-                 let state_check, is_stuck, _ = check_if_stuck state_after_draw in
-                 
-                 (* If stuck, refresh the piles *)
-                 let final_state = if is_stuck then
-                   let () = Stdio.printf "🔄 REFRESHING! 3... 2... 1...\n%!" in
-                   Hw2_speed_logic.Enhanced_game_state.refresh_center_cards state_check
-                 else
-                   state_check
-                 in
+                 let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
                  (* AI plays continuously via Clock.every - don't play AI moves here! *)
-                 if final_state.base_state.game_over then
-                   (match final_state.base_state.winner with
+                 if state_after_stuck_check.base_state.game_over then
+                   (match state_after_stuck_check.base_state.winner with
                     | Some Hw2_speed_logic.Player.Player1 -> 
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "YOU WIN! All cards played! Click 'New Game' to play again."
-                       ; countdown = None
                        }
                     | Some Hw2_speed_logic.Player.Player2 ->
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "AI WINS! AI played all cards first. Click 'New Game' to try again."
-                       ; countdown = None
                        }
                     | None ->
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "Game Over! Click 'New Game' to play again."
-                       ; countdown = None
                        })
-                 else if is_stuck then
-                   { enhanced_state = final_state
-                   ; selected_card = None
-                   ; game_message = "REFRESHING! 3... 2... 1... GO!"
-                   ; countdown = Some 3
-                   }
                  else
-                   { enhanced_state = final_state
+                   { enhanced_state = state_after_stuck_check
                    ; selected_card = None
-                   ; game_message = "Good play! Keep going!"
-                   ; countdown = None
+                   ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
                    }
               | Error msg ->
                  { model with 
@@ -189,12 +173,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                 (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
                  | Ok new_state ->
                     let state_with_draw = auto_draw_until_full new_state "Player2" in
-                    let state_check, is_stuck, _ = check_if_stuck state_with_draw in
-                    let state_after_stuck = if is_stuck then
-                      Hw2_speed_logic.Enhanced_game_state.refresh_center_cards state_check
-                    else
-                      state_check
-                    in
+                    let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
                     ai_play_all state_after_stuck (max_moves - 1)
                  | Error _ -> enh_state)
              | None -> enh_state
@@ -219,30 +198,22 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
               { enhanced_state = final_state
               ; selected_card = None
               ; game_message = "YOU WIN! All cards played!"
-              ; countdown = None
               }
             | Some Hw2_speed_logic.Player.Player2 ->
               { enhanced_state = final_state
               ; selected_card = None
               ; game_message = "AI WINS! AI was too fast!"
-              ; countdown = None
               }
             | None ->
                { enhanced_state = final_state
                ; selected_card = None
                ; game_message = "Game Over!"
-               ; countdown = None
                })
          else
            { enhanced_state = final_state
            ; selected_card = model.selected_card
            ; game_message = model.game_message
-           ; countdown = model.countdown
            }
-  
-  | Start_refresh_countdown | Countdown_tick ->
-      (* Not used anymore, but keep for compatibility *)
-      model
 ;;
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
