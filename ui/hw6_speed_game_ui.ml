@@ -390,10 +390,11 @@ let app =
       ~trigger_on_activate:true
       (Time_ns.Span.of_ms 300.0)
       (let%map inject = inject in
-       inject Action.AI_move_continuous)
+       inject Action.Trigger_periodic_update)
   in
 
   let%arr model = model
   and inject = inject in
-  Components.view model inject
+  let inject_action action = inject action in
+  Components.view model inject_action
 ;;
