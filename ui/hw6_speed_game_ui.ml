@@ -79,10 +79,15 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       if model.enhanced_state.base_state.game_over then
          model
       else
-      { model with 
-           selected_card = Some card
-         ; game_message = "Card selected! Click on a center pile to play it."
-         }
+        let () = Stdio.printf "🎯 SELECTED CARD: %s\n" (Hw2_speed_logic.Card.to_string card) in
+        let () = Stdio.printf "   Current hand has %d cards:\n" (List.length model.enhanced_state.base_state.player1_hand) in
+        let () = List.iteri model.enhanced_state.base_state.player1_hand ~f:(fun i c ->
+          Stdio.printf "     [%d] %s (same as selected? %b)\n" i (Hw2_speed_logic.Card.to_string c) (Hw2_speed_logic.Card.equal c card)) in
+        let () = Stdio.printf "%!" in
+        { model with 
+            selected_card = Some card
+          ; game_message = "Card selected! Click on a center pile to play it."
+          }
    
   | Play_on_pile pile_index ->
       if model.enhanced_state.base_state.game_over then
@@ -93,10 +98,10 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              { model with game_message = "Select a card from your hand first!" }
           | Some card ->
              let player_id = "Player1" in
-             let () = Stdio.printf "🎮 Playing card: %s on pile %d\n%!" 
-               (Hw2_speed_logic.Card.to_string card) pile_index in
-             let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
-             (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
+               let () = Stdio.printf "🎮 Playing card: %s on pile %d\n%!" 
+                 (Hw2_speed_logic.Card.to_string card) pile_index in
+               let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
+               (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
               | Ok new_enhanced_state ->
                  (* Auto-draw after playing - fill hand back to 5 *)
                  let state_after_draw = auto_draw_until_full new_enhanced_state player_id in
@@ -136,12 +141,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       if model.enhanced_state.base_state.game_over then
          model
       else
-         (* Ensure both players have full hands *)
-         let state_with_draws = 
-           model.enhanced_state
-           |> (fun s -> auto_draw_until_full s "Player1")
-           |> (fun s -> auto_draw_until_full s "Player2")
-         in
+         (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
+         let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
          
          (* Let AI try to play multiple cards in a burst *)
          let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
