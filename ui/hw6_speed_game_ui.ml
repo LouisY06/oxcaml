@@ -13,8 +13,8 @@ module Model = struct
       { enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
       ; selected_card : Hw2_speed_logic.Card.t option
       ; game_message : string
-      }
-   [@@deriving sexp, compare, equal]
+  }
+  [@@deriving sexp, compare, equal]
 
    let initial =
       { enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
@@ -25,12 +25,12 @@ module Model = struct
 end
 
 module Action = struct
-   type t =
-      | New_game
+  type t =
+    | New_game
       | Select_card of Hw2_speed_logic.Card.t
       | Play_on_pile of int (* pile index 0 or 1 *)
       | AI_move_continuous (* AI plays continuously *)
-   [@@deriving sexp, compare]
+  [@@deriving sexp, compare]
 end
 
 (* Helper to auto-draw cards after playing *)
@@ -63,19 +63,19 @@ let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_s
 ;;
 
 let apply_action (action : Action.t) (model : Model.t) : Model.t =
-   match action with
-   | New_game ->
+  match action with
+  | New_game ->
       let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
       { enhanced_state = new_enhanced_state
       ; selected_card = None
       ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
-      }
-   
-   | Select_card card ->
+    }
+  
+  | Select_card card ->
       if model.enhanced_state.base_state.game_over then
          model
       else
-         { model with 
+      { model with 
            selected_card = Some card
          ; game_message = "Card selected! Click on a center pile to play it."
          }
@@ -97,30 +97,47 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                  (* Check if stuck *)
                  let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
-                 if state_after_stuck_check.base_state.game_over then
-                   (match state_after_stuck_check.base_state.winner with
+                 (* After player plays, let AI make several moves quickly *)
+                 let rec ai_play_multiple (enh_state : Hw2_speed_logic.Enhanced_game_state.t) count =
+                   if count <= 0 || enh_state.base_state.game_over then
+                     enh_state
+                   else
+                     match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
+                     | Some ai_move ->
+                        (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
+                         | Ok new_state ->
+                            let state_with_draw = auto_draw_if_needed new_state "Player2" in
+                            let state_with_stuck, _ = check_and_refresh_if_stuck state_with_draw in
+                            ai_play_multiple state_with_stuck (count - 1)
+                         | Error _ -> enh_state)
+                     | None -> enh_state
+                 in
+                 let final_state = ai_play_multiple state_after_stuck_check 3 in (* AI plays up to 3 cards after your move *)
+                 
+                 if final_state.base_state.game_over then
+                   (match final_state.base_state.winner with
                     | Some Hw2_speed_logic.Player.Player1 -> 
-                       { enhanced_state = state_after_stuck_check
+                       { enhanced_state = final_state
                        ; selected_card = None
                        ; game_message = "🎉 YOU WIN! 🎉 All cards played! Click 'New Game' to play again."
                        }
                     | Some Hw2_speed_logic.Player.Player2 ->
-                       { enhanced_state = state_after_stuck_check
+                       { enhanced_state = final_state
                        ; selected_card = None
                        ; game_message = "😞 AI WINS! 😞 AI played all cards first. Click 'New Game' to try again."
                        }
                     | None ->
-                       { enhanced_state = state_after_stuck_check
+                       { enhanced_state = final_state
                        ; selected_card = None
                        ; game_message = "Game Over! Click 'New Game' to play again."
                        })
                  else
-                   { enhanced_state = state_after_stuck_check
+                   { enhanced_state = final_state
                    ; selected_card = None
                    ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
                    }
               | Error msg -> 
-                 { model with 
+        { model with 
                    game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
                  }))
    
@@ -346,11 +363,4 @@ let app =
    in
    let%arr model = model and inject = inject in
    let inject_action action = inject (apply_action action model) in
-   
-   (* Continuously trigger AI moves using Effect scheduling *)
-   let () = 
-     if not model.enhanced_state.base_state.game_over then
-       ignore (Effect.Many [inject_action Action.AI_move_continuous])
-   in
-   
    Components.view model inject_action

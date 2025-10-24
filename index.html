@@ -36,26 +36,40 @@
     <!-- Include the compiled Bonsai JavaScript -->
     <script src="hw6_speed_game_app.bc.js"></script>
     <script>
-        // Wait for DOM to be fully loaded
+        // AI continuous play loop
+        let aiLoopInterval = null;
+        
         window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, checking for Bonsai app...');
+            console.log('DOM loaded, starting AI loop...');
             
-            // Check if the app element exists
-            const appElement = document.getElementById('app');
-            if (!appElement) {
-                console.error('App element not found!');
-            } else {
-                console.log('App element found:', appElement);
-            }
-            
-            // Wait a bit for the Bonsai script to initialize
+            // Start AI loop after a brief delay to let Bonsai initialize
             setTimeout(function() {
-                console.log('Checking if app has loaded...');
-                if (appElement.innerHTML.includes('Loading HW6 Speed Game UI...')) {
-                    console.error('Bonsai app failed to initialize - still showing loading message');
-                    appElement.innerHTML = '<div style="color: red; padding: 20px;">Error: Bonsai application failed to initialize. Check browser console for details.</div>';
-                }
-            }, 5000);
+                console.log('Starting continuous AI play...');
+                
+                // AI plays every 200ms (5 times per second) - very fast!
+                aiLoopInterval = setInterval(function() {
+                    const appElement = document.getElementById('app');
+                    if (appElement) {
+                        // Check if game is over by looking for win message
+                        const statusElement = document.getElementById('gameStatus');
+                        if (statusElement && !statusElement.textContent.includes('WIN')) {
+                            // Trigger AI move by simulating a click event
+                            // The Bonsai app will handle the AI logic
+                            const event = new CustomEvent('ai-move-trigger');
+                            document.dispatchEvent(event);
+                        }
+                    }
+                }, 200); // AI plays every 200ms
+                
+                console.log('AI loop started - AI will play continuously!');
+            }, 2000);
+        });
+        
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            if (aiLoopInterval) {
+                clearInterval(aiLoopInterval);
+            }
         });
         
         // Catch any JavaScript errors
