@@ -152,7 +152,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              | None -> enh_state
          in
          
-         let final_state = ai_play_all state_with_draws 5 in
+         let final_state = ai_play_all state_with_draws 2 in
          
          if final_state.base_state.game_over then
            (match final_state.base_state.winner with
@@ -368,12 +368,12 @@ let app =
       ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
   in
 
-  (* Periodic AI update every 200ms - AI plays fast! *)
+  (* Periodic AI update every 800ms - slower AI *)
   let%sub () =
     Bonsai.Clock.every
       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
       ~trigger_on_activate:true
-      (Time_ns.Span.of_ms 200.0)
+      (Time_ns.Span.of_ms 800.0)
       (let%map inject = inject in
        inject Action.Trigger_periodic_update)
   in
