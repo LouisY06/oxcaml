@@ -34,23 +34,26 @@ module Action = struct
   [@@deriving sexp, compare]
 end
 
-(* Helper to auto-draw cards after playing *)
-let auto_draw_if_needed (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) (player_id : string) 
+(* Helper to auto-draw cards - keep drawing until hand has 5 cards *)
+let auto_draw_until_full (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) (player_id : string) 
   : Hw2_speed_logic.Enhanced_game_state.t =
-  let base = enhanced_state.base_state in
-  let hand_size, stock_size = 
-    if String.equal player_id "Player1" then
-      (List.length base.player1_hand, List.length base.player1_stock)
+  let rec draw_loop (enh_state : Hw2_speed_logic.Enhanced_game_state.t) =
+    let base = enh_state.base_state in
+    let hand_size, stock_size = 
+      if String.equal player_id "Player1" then
+        (List.length base.player1_hand, List.length base.player1_stock)
+      else
+        (List.length base.player2_hand, List.length base.player2_stock)
+    in
+    if hand_size < 5 && stock_size > 0 then
+      let move = Hw2_speed_logic.Move.Draw_cards in
+      match Hw2_speed_logic.Enhanced_game_state.make_move enh_state move player_id with
+      | Ok new_state -> draw_loop new_state  (* Keep drawing until hand is full *)
+      | Error _ -> enh_state
     else
-      (List.length base.player2_hand, List.length base.player2_stock)
+      enh_state
   in
-  if hand_size < 5 && stock_size > 0 then
-    let move = Hw2_speed_logic.Move.Draw_cards in
-    match Hw2_speed_logic.Enhanced_game_state.make_move enhanced_state move player_id with
-    | Ok new_state -> new_state
-    | Error _ -> enhanced_state
-  else
-    enhanced_state
+  draw_loop enhanced_state
 ;;
 
 (* Check if both players are stuck and refresh cards *)
@@ -93,8 +96,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
              (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
               | Ok new_enhanced_state ->
-                 (* Auto-draw after playing *)
-                 let state_after_draw = auto_draw_if_needed new_enhanced_state player_id in
+                 (* Auto-draw after playing - fill hand back to 5 *)
+                 let state_after_draw = auto_draw_until_full new_enhanced_state player_id in
                  (* Check if stuck *)
                  let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
@@ -107,7 +110,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                      | Some ai_move ->
                         (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
                          | Ok new_state ->
-                            let state_with_draw = auto_draw_if_needed new_state "Player2" in
+                            let state_with_draw = auto_draw_until_full new_state "Player2" in
                             let state_with_stuck, _ = check_and_refresh_if_stuck state_with_draw in
                             ai_play_multiple state_with_stuck (count - 1)
                          | Error _ -> enh_state)
@@ -146,51 +149,55 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       if model.enhanced_state.base_state.game_over then
          model
       else
-         (* AI tries to play as many cards as possible *)
+         (* First ensure both players have full hands *)
+         let state_with_draws = 
+           model.enhanced_state
+           |> (fun s -> auto_draw_until_full s "Player1")
+           |> (fun s -> auto_draw_until_full s "Player2")
+         in
+         
+         (* Then AI tries to play as many cards as possible *)
          let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
            if max_moves <= 0 || enh_state.base_state.game_over then
              enh_state
            else
-             (* First auto-draw for AI if needed *)
-             let state_with_ai_draw = auto_draw_if_needed enh_state "Player2" in
-             (* Then try to make a move *)
-             match Hw2_speed_logic.Enhanced_game_state.ai_choose_move state_with_ai_draw with
+             (* Try to make a move *)
+             match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
              | Some ai_move ->
-                (match Hw2_speed_logic.Enhanced_game_state.make_move state_with_ai_draw ai_move "Player2" with
+                (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
                  | Ok new_state ->
+                    (* Auto-draw immediately after playing *)
+                    let state_with_draw = auto_draw_until_full new_state "Player2" in
                     (* Check if stuck after AI move *)
-                    let state_after_stuck, _ = check_and_refresh_if_stuck new_state in
+                    let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
                     (* Continue playing more cards *)
                     ai_play_all state_after_stuck (max_moves - 1)
-                 | Error _ -> state_with_ai_draw)
-             | None -> state_with_ai_draw
+                 | Error _ -> enh_state)
+             | None -> enh_state
          in
          
          (* Let AI play up to 5 cards per update cycle *)
-         let final_state = ai_play_all model.enhanced_state 5 in
+         let final_state = ai_play_all state_with_draws 5 in
          
-         (* Also auto-draw for player if needed *)
-         let state_with_player_draw = auto_draw_if_needed final_state "Player1" in
-         
-         if state_with_player_draw.base_state.game_over then
-           (match state_with_player_draw.base_state.winner with
+         if final_state.base_state.game_over then
+           (match final_state.base_state.winner with
             | Some Hw2_speed_logic.Player.Player1 -> 
-               { enhanced_state = state_with_player_draw
+               { enhanced_state = final_state
                ; selected_card = None
                ; game_message = "🎉 YOU WIN! 🎉 All cards played!"
                }
             | Some Hw2_speed_logic.Player.Player2 ->
-               { enhanced_state = state_with_player_draw
+               { enhanced_state = final_state
                ; selected_card = None
                ; game_message = "😞 AI WINS! 😞 AI was too fast!"
                }
             | None ->
-               { enhanced_state = state_with_player_draw
+               { enhanced_state = final_state
                ; selected_card = None
                ; game_message = "Game Over!"
                })
          else
-           { enhanced_state = state_with_player_draw
+           { enhanced_state = final_state
            ; selected_card = model.selected_card
            ; game_message = model.game_message
            }
