@@ -1,6 +1,8 @@
 open! Core
 
-(* Card representation *)
+(* HW1: Core Speed Card Game Logic *)
+(* This module contains the fundamental game components: Card, Player, Move, and Game_state *)
+
 module Card = struct
   type suit = Hearts | Diamonds | Clubs | Spades
   [@@deriving sexp, compare, equal]
@@ -19,9 +21,20 @@ module Card = struct
     | Eight -> 8 | Nine -> 9 | Ten -> 10 | Jack -> 11 | Queen -> 12 | King -> 13
 
   let can_play_on card pile_card =
-    let card_val = rank_value card.rank in
-    let pile_val = rank_value pile_card.rank in
-    card_val = pile_val + 1 || card_val = pile_val - 1
+    if Option.is_none pile_card then false
+    else
+      let pile_card = Option.value_exn pile_card in
+      let card_val = rank_value card.rank in
+      let pile_val = rank_value pile_card.rank in
+      
+      (* Ace is wild - can play on King or 2 *)
+      if Poly.(card.rank = Ace) then
+        pile_val = 13 || pile_val = 2  (* King or 2 *)
+      else if Poly.(pile_card.rank = Ace) then
+        card_val = 13 || card_val = 2  (* King or 2 *)
+      else
+        (* Normal ±1 rule *)
+        card_val = pile_val + 1 || card_val = pile_val - 1
 
   let to_string { suit; rank } =
     let suit_str = match suit with
@@ -35,7 +48,6 @@ module Card = struct
     rank_str ^ suit_str
 end
 
-(* Player representation *)
 module Player = struct
   type t = 
     | Player1 
@@ -47,15 +59,16 @@ module Player = struct
     | Player2 -> Player1
 end
 
-(* Move types *)
 module Move = struct
   type t =
     | Play_card of { card : Card.t; pile : int }  (* pile: 0 or 1 *)
     | Draw_cards  (* Draw from stock pile *)
   [@@deriving sexp, compare]
+
+  let play_card card pile = Play_card { card; pile }
+  let draw_cards = Draw_cards
 end
 
-(* Game state *)
 module Game_state = struct
   type t = {
     (* Player hands - each player has 5 cards in hand *)
@@ -101,8 +114,8 @@ module Game_state = struct
       |> List.map ~f:(fun (suit, rank) -> { Card.suit; rank })
     in
     
-    (* Shuffle deck (simplified - just reverse for demo) *)
-    let shuffled_deck = List.rev deck in
+    (* Shuffle deck *)
+    let shuffled_deck = List.permute deck in
     
     (* Deal cards: 5 to each hand, rest split between stock piles *)
     let player1_hand = List.take shuffled_deck 5 in
@@ -115,11 +128,15 @@ module Game_state = struct
     let player1_stock = List.take final_remaining mid in
     let player2_stock = List.drop final_remaining mid in
     
+    (* Place initial cards on piles *)
+    let pile1 = List.nth shuffled_deck 40 in
+    let pile2 = List.nth shuffled_deck 41 in
+    
     {
       player1_hand;
       player2_hand;
-      pile1 = None;
-      pile2 = None;
+      pile1;
+      pile2;
       player1_stock;
       player2_stock;
       current_player = Player.Player1;
@@ -213,7 +230,7 @@ module Game_state = struct
               Error Move_error.Empty_pile
             else
               (* Check if card can be played *)
-              if not (can_play_card card pile_card) then
+              if not (Card.can_play_on card pile_card) then
                 Error Move_error.Invalid_play
               else
                 (* Make the move *)
@@ -285,7 +302,7 @@ module Game_state = struct
               | 1 -> game_state.pile2
               | _ -> None
             in
-            if can_play_card card pile_card then
+            if Card.can_play_on card pile_card then
               Some (Move.Play_card { card; pile })
             else
               None

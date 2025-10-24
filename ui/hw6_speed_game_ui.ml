@@ -1,24 +1,24 @@
 open! Core
+open! Base
 open Speed_logic_library
-open Hw1
-open! Bonsai_web
+open! Bonsai
 open! Bonsai.Let_syntax
+open! Bonsai_web
 
-(* Interactive Speed Card Game Web Interface *)
+(* HW6: Speed Card Game UI using Bonsai *)
+(* This module maps the HW2 game logic to HTML + CSS using Bonsai's reactive framework *)
 
 module Model = struct
   type t = {
-    game_state : Game_state.t;
-    selected_card : Card.t option;
-    game_log : string list;
+    enhanced_state : Hw2_speed_logic.Enhanced_game_state.t;
+    selected_card : Hw2_speed_logic.Card.t option;
     ai_thinking : bool;
   }
   [@@deriving sexp, compare, equal]
 
   let initial = {
-    game_state = Game_state.create ();
+    enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ();
     selected_card = None;
-    game_log = ["Click 'New Game' to start playing Speed!"];
     ai_thinking = false;
   }
 end
@@ -26,10 +26,9 @@ end
 module Action = struct
   type t =
     | New_game
-    | Select_card of Card.t
-    | Play_card of Card.t * int  (* card and pile index *)
+    | Select_card of Hw2_speed_logic.Card.t
+    | Play_card of Hw2_speed_logic.Card.t * int  (* card and pile index *)
     | AI_move
-    | Log_message of string
     | Set_ai_thinking of bool
   [@@deriving sexp, compare]
 end
@@ -37,11 +36,10 @@ end
 let apply_action (action : Action.t) (model : Model.t) =
   match action with
   | New_game ->
-    let new_game_state = Game_state.create () in
+    let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
     { model with 
-      game_state = new_game_state;
+      enhanced_state = new_enhanced_state;
       selected_card = None;
-      game_log = ["New game started! Two random cards placed in center piles."] @ model.game_log;
       ai_thinking = false;
     }
   
@@ -49,193 +47,160 @@ let apply_action (action : Action.t) (model : Model.t) =
     { model with selected_card = Some card }
   
   | Play_card (card, pile_index) ->
-    let move = Move.Play_card { card; pile = pile_index } in
-    (match Game_state.make_move model.game_state move with
-    | Ok new_game_state ->
-      let log_msg = Printf.sprintf "You played %s on pile %d" (Card.to_string card) (pile_index + 1) in
-      { model with 
-        game_state = new_game_state;
-        selected_card = None;
-        game_log = log_msg :: model.game_log;
-        ai_thinking = true; (* Trigger AI move *)
-      }
-    | Error _ ->
-      let log_msg = Printf.sprintf "Cannot play %s on pile %d!" (Card.to_string card) (pile_index + 1) in
-      { model with game_log = log_msg :: model.game_log })
+    let player_id = "Player1" in
+    let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
+    (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
+     | Ok new_enhanced_state ->
+       { model with enhanced_state = new_enhanced_state; selected_card = None }
+     | Error _msg -> model)
   
   | AI_move ->
-    (* Simple AI: play first available card *)
-    let available_moves = Game_state.get_all_moves model.game_state in
-    let play_moves = List.filter available_moves ~f:(function
-      | Move.Play_card _ -> true
-      | Move.Draw_cards -> false) in
-    (match play_moves with
-    | Move.Play_card { card; pile } :: _ ->
-      (match Game_state.make_move model.game_state (Move.Play_card { card; pile }) with
-      | Ok new_game_state ->
-        let log_msg = Printf.sprintf "AI played %s on pile %d" (Card.to_string card) (pile + 1) in
-        { model with 
-          game_state = new_game_state;
-          game_log = log_msg :: model.game_log;
-          ai_thinking = false;
-        }
-      | Error _ -> { model with ai_thinking = false })
-    | [] -> { model with ai_thinking = false })
+    (match Hw2_speed_logic.Enhanced_game_state.ai_choose_move model.enhanced_state with
+     | Some ai_move ->
+       (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state ai_move "Player2" with
+        | Ok new_enhanced_state -> 
+          { model with enhanced_state = new_enhanced_state; ai_thinking = false }
+        | Error _msg -> 
+          { model with ai_thinking = false })
+     | None -> 
+       { model with ai_thinking = false })
   
-  | Log_message msg ->
-    { model with game_log = msg :: model.game_log }
-  
-  | Set_ai_thinking thinking ->
-    { model with ai_thinking = thinking }
+  | Set_ai_thinking b -> 
+    { model with ai_thinking = b }
 
-(* Render a single card *)
-let render_card (card : Card.t option) =
-  match card with
-  | None -> Vdom.Node.text "Empty"
-  | Some card -> 
-    let card_text = Card.to_string card in
-    let color = 
-      match card.suit with
-      | Card.Hearts | Card.Diamonds -> "red"
-      | Card.Clubs | Card.Spades -> "black"
-    in
-    Vdom.Node.div
-      ~attrs:[
-        Vdom.Attr.style (Css_gen.color (`Name color));
-        Vdom.Attr.class_ "card"
-      ]
-      [Vdom.Node.text card_text]
+let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
+  let open Hw2_speed_logic in
+  let open Vdom in
+  let open Attr in
 
-(* Render a hand of cards with click handlers *)
-let render_hand (hand : Card.t list) (on_card_click : Card.t -> unit) (selected_card : Card.t option) =
-  Vdom.Node.div
-    ~attrs:[Vdom.Attr.class_ "hand"]
-    (List.map hand ~f:(fun card ->
-      let is_selected = Option.equal Card.equal selected_card (Some card) in
-      Vdom.Node.div
-        ~attrs:[
-          Vdom.Attr.class_ ("card" ^ if is_selected then " selected" else "");
-          Vdom.Attr.on_click (fun _ -> on_card_click card)
-        ]
-        [Vdom.Node.text (Card.to_string card)]))
-
-(* Render game log *)
-let render_game_log (log : string list) =
-  Vdom.Node.div
-    ~attrs:[Vdom.Attr.class_ "game-log"]
-    (List.map log ~f:(fun msg ->
-      Vdom.Node.div [Vdom.Node.text msg]))
-
-(* Main interactive Speed game component *)
-let component =
-  let%sub model, inject = Bonsai.state_machine0
-    ~default_model:Model.initial
-    ~apply_action
+  (* Player hand *)
+  let player_hand_html =
+    Node.div
+      ~attrs:[class_ "hand"; id "player1Hand"]
+      (List.map model.enhanced_state.base_state.player1_hand ~f:(fun card ->
+         let card_text = Card.to_string card in
+         let is_selected = Option.equal Card.equal model.selected_card (Some card) in
+         let classes = if is_selected then "card selected" else "card" in
+         Node.div
+           ~attrs:[class_ classes; on_click (fun _ -> inject (Action.Select_card card))]
+           [Node.text card_text]))
   in
-  
-  (* Auto-trigger AI move after player move *)
-  let%sub () = Bonsai.Edge.on_change
-    ~equal:[%equal: Model.t]
-    model
-    ~f:(fun model ->
-      if model.ai_thinking && not model.game_state.game_over then
-        inject Action.AI_move)
+
+  (* AI hand (face down) *)
+  let ai_hand_html =
+    Node.div
+      ~attrs:[class_ "hand"; id "aiHand"]
+      (List.map model.enhanced_state.base_state.player2_hand ~f:(fun _ ->
+         Node.div ~attrs:[class_ "card face-down"] [Node.text "🂠"]))
   in
-  
-  return (
-    let open Vdom.Node in
-    div
-      ~attrs:[Vdom.Attr.class_ "game-container"]
+
+  (* Center piles *)
+  let pile_html pile_id pile_card_opt =
+    Node.div
+      ~attrs:[class_ "pile"; id pile_id; on_click (fun _ ->
+        match model.selected_card with
+        | Some card -> inject (Action.Play_card (card, (if String.equal pile_id "pile1" then 0 else 1)))
+        | None -> Effect.Ignore
+      )]
       [
-        div
-          ~attrs:[Vdom.Attr.class_ "game-header"]
-          [
-            h1 [text "Speed Card Game"];
-            div
-              ~attrs:[Vdom.Attr.class_ "game-controls"]
-              [
-                button
-                  ~attrs:[Vdom.Attr.on_click (fun _ -> inject Action.New_game)]
-                  [text "New Game"]
-              ]
-          ];
-        
-        div
-          ~attrs:[Vdom.Attr.class_ "game-board"]
-          [
-            (* AI Player Area *)
-            div
-              ~attrs:[Vdom.Attr.class_ "player-area player2-area"]
-              [
-                div ~attrs:[Vdom.Attr.class_ "player-label"] [text "AI Player"];
-                render_hand model.game_state.player2_hand (fun _ -> ()) model.selected_card;
-                div
-                  ~attrs:[Vdom.Attr.class_ "stock-pile"]
-                  [
-                    div
-                      ~attrs:[Vdom.Attr.class_ "stock-label"]
-                      [text (Printf.sprintf "Stock: %d cards" (List.length model.game_state.player2_stock))]
-                  ]
-              ];
-            
-            (* Center Playing Area *)
-            div
-              ~attrs:[Vdom.Attr.class_ "center-area"]
-              [
-                div
-                  ~attrs:[Vdom.Attr.class_ "pile-area"]
-                  [
-                    div
-                      ~attrs:[Vdom.Attr.class_ "pile pile1"]
-                      [
-                        div ~attrs:[Vdom.Attr.class_ "pile-label"] [text "Pile 1"];
-                        render_card model.game_state.pile1
-                      ];
-                    div
-                      ~attrs:[Vdom.Attr.class_ "pile pile2"]
-                      [
-                        div ~attrs:[Vdom.Attr.class_ "pile-label"] [text "Pile 2"];
-                        render_card model.game_state.pile2
-                      ]
-                  ]
-              ];
-            
-            (* Human Player Area *)
-            div
-              ~attrs:[Vdom.Attr.class_ "player-area player1-area"]
-              [
-                div ~attrs:[Vdom.Attr.class_ "player-label"] [text "You (Player 1)"];
-                render_hand model.game_state.player1_hand (fun card ->
-                  match model.selected_card with
-                  | None -> inject (Action.Select_card card)
-                  | Some selected_card ->
-                    if Card.equal card selected_card then
-                      (* Try to play on both piles *)
-                      (match model.game_state.pile1, model.game_state.pile2 with
-                      | Some pile1_card, _ when Card.can_play_on selected_card pile1_card ->
-                        inject (Action.Play_card (selected_card, 0))
-                      | _, Some pile2_card when Card.can_play_on selected_card pile2_card ->
-                        inject (Action.Play_card (selected_card, 1))
-                      | _ -> inject (Action.Log_message "Cannot play this card!"))
-                    else
-                      inject (Action.Select_card card)) model.selected_card;
-                div
-                  ~attrs:[Vdom.Attr.class_ "stock-pile"]
-                  [
-                    div
-                      ~attrs:[Vdom.Attr.class_ "stock-label"]
-                      [text (Printf.sprintf "Stock: %d cards" (List.length model.game_state.player1_stock))]
-                  ]
-              ]
-          ];
-        
-        div
-          ~attrs:[Vdom.Attr.class_ "game-info"]
-          [
-            div
-              ~attrs:[Vdom.Attr.class_ "info-item"]
-              [text "Speed Rules: Click cards to play them! Cards must be ±1 rank from pile top. Aces are wild."];
-            render_game_log model.game_log
-          ]
+        Node.div ~attrs:[class_ "pile-label"] [Node.text (Printf.sprintf "Center Pile %s" (String.sub pile_id ~pos:4 ~len:1))];
+        (match pile_card_opt with
+         | Some card -> 
+           let card_text = Card.to_string card in
+           Node.div ~attrs:[class_ "card"] [Node.text card_text]
+         | None -> Node.div ~attrs:[class_ "card empty-pile"] [Node.text "Empty"])
       ]
-  )
+  in
+
+  let pile1_html = pile_html "pile1" model.enhanced_state.base_state.pile1 in
+  let pile2_html = pile_html "pile2" model.enhanced_state.base_state.pile2 in
+
+  (* Game log *)
+  let game_log_html =
+    Node.div
+      ~attrs:[class_ "game-log"; id "gameLog"]
+      (List.map model.enhanced_state.game_log ~f:(fun msg ->
+         Node.div ~attrs:[class_ "log-entry"] [Node.text msg]))
+  in
+
+  (* Game status *)
+  let game_status_text =
+    if model.enhanced_state.base_state.game_over then
+      match model.enhanced_state.base_state.winner with
+      | Some Player.Player1 -> "🎉 YOU WIN! 🎉"
+      | Some Player.Player2 -> "😞 AI WINS! 😞"
+      | None -> "Game Over (No Winner)"
+    else if model.ai_thinking then
+      "AI is thinking..."
+    else
+      "Game in progress - Click cards to play!"
+  in
+
+  Node.div
+    ~attrs:[class_ "game-container"]
+    [
+      Node.div
+        ~attrs:[class_ "game-header"]
+        [
+          Node.h1 [Node.text "HW6: Speed Card Game UI - Bonsai"];
+          Node.div ~attrs:[class_ "game-status"; id "gameStatus"] [Node.text game_status_text];
+          Node.div
+            ~attrs:[class_ "game-controls"]
+            [
+              Node.button ~attrs:[on_click (fun _ -> inject Action.New_game)] [Node.text "New Game"];
+              Node.button ~attrs:[on_click (fun _ -> inject Action.AI_move)] [Node.text "AI Move"];
+            ];
+        ];
+
+      Node.div
+        ~attrs:[class_ "game-board"]
+        [
+          Node.div ~attrs:[class_ "player-area player2-area"]
+            [
+              Node.div ~attrs:[class_ "player-label"] [Node.text "AI Player"];
+              ai_hand_html;
+              Node.div ~attrs:[class_ "stock-pile"]
+                [
+                  Node.div ~attrs:[class_ "stock-label"] [Node.text (Printf.sprintf "Draw Pile: %d cards" (List.length model.enhanced_state.base_state.player2_stock))];
+                  Node.div ~attrs:[class_ "card face-down stock"] [Node.text "🂠"];
+                ];
+            ];
+
+          Node.div ~attrs:[class_ "center-area"]
+            [
+              Node.div ~attrs:[class_ "pile-area"]
+                [
+                  pile1_html;
+                  pile2_html;
+                ];
+            ];
+
+          Node.div ~attrs:[class_ "player-area player1-area"]
+            [
+              Node.div ~attrs:[class_ "player-label"] [Node.text "You (Player 1)"];
+              player_hand_html;
+              Node.div ~attrs:[class_ "stock-pile"]
+                [
+                  Node.div ~attrs:[class_ "stock-label"] [Node.text (Printf.sprintf "Draw Pile: %d cards" (List.length model.enhanced_state.base_state.player1_stock))];
+                  Node.div ~attrs:[class_ "card face-down stock"] [Node.text "🂠"];
+                ];
+            ];
+        ];
+
+      Node.div
+        ~attrs:[class_ "game-info"]
+        [
+          Node.div ~attrs:[class_ "info-item"] [Node.strong [Node.text "Controls:"]; Node.text " Click a card to select it (green border), then click a pile to play it!"];
+          Node.div ~attrs:[class_ "info-item"] [Node.strong [Node.text "Speed Rules:"]; Node.text " Cards must be ±1 rank from pile top. Aces are wild (King or 2)."];
+          Node.div ~attrs:[class_ "info-item"] [Node.strong [Node.text "HW2 Features:"]; Node.text " Simultaneous play, enhanced logging, stuck detection."];
+          Node.div ~attrs:[class_ "info-item"] [Node.strong [Node.text "Bonsai Mapping:"]; Node.text " OCaml game logic → HTML + CSS components."];
+          Node.div ~attrs:[class_ "info-item"] [Node.strong [Node.text "Game Log:"]];
+          game_log_html;
+        ];
+    ]
+
+let app =
+  let%sub model, inject = Bonsai.state (module Model) ~default_model:Model.initial in
+  let%map model = model and inject = inject in
+  let inject_action action = inject (apply_action action model) in
+  view model inject_action

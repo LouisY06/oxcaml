@@ -1,5 +1,0 @@
-(library
- (name speed_logic_library)
- (libraries core)
- (preprocess
-  (pps ppx_jane)))

@@ -1,6 +1,0 @@
-(executables
- (modes js)
- (names hw6_speed_game_ui speed_game_web)
- (libraries bonsai bonsai_web core speed_logic_library)
- (preprocess
-  (pps ppx_jane bonsai.ppx_bonsai)))

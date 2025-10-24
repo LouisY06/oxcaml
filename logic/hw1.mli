@@ -14,7 +14,7 @@ module Card : sig
   [@@deriving sexp, compare, equal]
 
   val rank_value : rank -> int
-  val can_play_on : t -> t -> bool
+  val can_play_on : t -> t option -> bool
   val to_string : t -> string
 end
 
