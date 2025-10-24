@@ -1,7 +1,6 @@
 (executables
  (modes js)
- (names hw6_speed_game_ui)
- (libraries bonsai bonsai_web core speed_logic_library)
- (preprocess (pps ppx_jane bonsai.ppx_bonsai))
- (js_of_ocaml
-   (flags --source-map-inline --pretty --effects=cps)))
+ (names hw6_speed_game_app)
+ (libraries bonsai bonsai.web core speed_logic_library)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))
