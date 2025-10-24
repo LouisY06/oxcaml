@@ -266,7 +266,7 @@ module Components = struct
             [ Node.div ~attrs:[ Attr.create "class" "pile-label" ]
                  [ Node.text (Printf.sprintf "Pile %d" (pile_index + 1)) ]
             ; (match pile_card_opt with
-               | Some card -> card_to_html card false true ~inject
+               | Some card -> card_to_html card false false ~inject  (* NOT a player card! Don't make it clickable! *)
                | None -> 
                   Node.div 
                      ~attrs:[ Attr.create "class" "card empty-pile" ] 
