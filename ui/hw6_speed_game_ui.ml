@@ -27,10 +27,10 @@ end
 module Action = struct
   type t =
     | New_game
-      | Select_card of Hw2_speed_logic.Card.t
-      | Play_on_pile of int (* pile index 0 or 1 *)
-      | AI_move_continuous (* AI plays continuously *)
-      | Trigger_periodic_update (* Periodic game update *)
+    | Select_card of Hw2_speed_logic.Card.t
+    | Play_on_pile of int (* pile index 0 or 1 *)
+    | AI_move_continuous (* AI plays continuously *)
+    | Trigger_periodic_update (* Periodic game update *)
   [@@deriving sexp, compare]
 end
 
@@ -84,7 +84,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          ; game_message = "Card selected! Click on a center pile to play it."
          }
    
-   | Play_on_pile pile_index ->
+  | Play_on_pile pile_index ->
       if model.enhanced_state.base_state.game_over then
          model
       else
@@ -145,46 +145,33 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                    game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
                  }))
    
-   | AI_move_continuous | Trigger_periodic_update ->
-      (* Log that we're being called *)
-      let () = Stdio.printf "⚡ Periodic update triggered! AI is playing...\n%!" in
+  | AI_move_continuous | Trigger_periodic_update ->
       if model.enhanced_state.base_state.game_over then
          model
       else
-         (* First ensure both players have full hands *)
+         (* Ensure both players have full hands *)
          let state_with_draws = 
            model.enhanced_state
            |> (fun s -> auto_draw_until_full s "Player1")
            |> (fun s -> auto_draw_until_full s "Player2")
          in
          
-         (* Then AI tries to play as many cards as possible *)
+         (* Let AI try to play multiple cards in a burst *)
          let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
            if max_moves <= 0 || enh_state.base_state.game_over then
              enh_state
            else
-             (* Try to make a move *)
              match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
              | Some ai_move ->
-                let () = Stdio.printf "🤖 AI found a move and is playing it!\n%!" in
                 (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
                  | Ok new_state ->
-                    let () = Stdio.printf "✅ AI successfully played a card!\n%!" in
-                    (* Auto-draw immediately after playing *)
                     let state_with_draw = auto_draw_until_full new_state "Player2" in
-                    (* Check if stuck after AI move *)
                     let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
-                    (* Continue playing more cards *)
                     ai_play_all state_after_stuck (max_moves - 1)
-                 | Error msg -> 
-                    let () = Stdio.printf "❌ AI move failed: %s\n%!" msg in
-                    enh_state)
-             | None -> 
-                let () = Stdio.printf "⚠️  AI has no valid moves right now\n%!" in
-                enh_state
+                 | Error _ -> enh_state)
+             | None -> enh_state
          in
          
-         (* Let AI play up to 5 cards per update cycle *)
          let final_state = ai_play_all state_with_draws 5 in
          
          if final_state.base_state.game_over then
@@ -384,24 +371,29 @@ module Components = struct
    ;;
 end
 
+(* ================================= *)
+(* 🚀 FIXED Bonsai App Initialization *)
+(* ================================= *)
 let app =
-   let%sub model, inject =
-      Bonsai.state (module Model) ~default_model:Model.initial
-   in
-   
-   (* Set up periodic AI updates using Bonsai.Clock.every *)
-   let%sub () =
-     Bonsai.Clock.every
-       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
-       ~trigger_on_activate:true
-       (Time_ns.Span.of_ms 300.0)
-       (let%map inject = inject and model = model in
-        if not model.enhanced_state.base_state.game_over then
-          inject (apply_action Action.Trigger_periodic_update model)
-        else
-          Effect.Ignore)
-   in
-   
-   let%arr model = model and inject = inject in
-   let inject_action action = inject (apply_action action model) in
-   Components.view model inject_action
+  let%sub model, inject =
+    Bonsai.state_machine0
+      (module Model)
+      (module Action)
+      ~default_model:Model.initial
+      ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
+  in
+
+  (* Periodic AI update every 300ms *)
+  let%sub () =
+    Bonsai.Clock.every
+      ~when_to_start_next_effect:`Every_multiple_of_period_blocking
+      ~trigger_on_activate:true
+      (Time_ns.Span.of_ms 300.0)
+      (let%map inject = inject in
+       inject Action.AI_move_continuous)
+  in
+
+  let%arr model = model
+  and inject = inject in
+  Components.view model inject
+;;
