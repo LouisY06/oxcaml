@@ -56,7 +56,7 @@ let auto_draw_until_full (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
   draw_loop enhanced_state
 ;;
 
-(* Check if both players are stuck and refresh cards if needed *)
+(* Check if both players are stuck and keep refreshing until someone can play *)
 let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) 
   : Hw2_speed_logic.Enhanced_game_state.t * string =
   let is_stuck = Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck enhanced_state in
@@ -72,11 +72,22 @@ let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_s
     (match enhanced_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
   let () = Stdio.printf "Both stuck? %b\n%!" is_stuck in
   if is_stuck then
-    let new_state = Hw2_speed_logic.Enhanced_game_state.refresh_center_cards enhanced_state in
-    let () = Stdio.printf "🔄 REFRESHING PILES! New Pile 1: %s | New Pile 2: %s\n%!"
-      (match new_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
-      (match new_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
-    (new_state, "Both players stuck! Center cards refreshed.")
+    (* Keep refreshing until at least one player can play *)
+    let rec refresh_until_playable state refresh_count =
+      let new_state = Hw2_speed_logic.Enhanced_game_state.refresh_center_cards state in
+      let () = Stdio.printf "🔄 REFRESH #%d! New Pile 1: %s | New Pile 2: %s\n%!"
+        refresh_count
+        (match new_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
+        (match new_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
+      let still_stuck = Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck new_state in
+      if still_stuck && refresh_count < 10 then
+        refresh_until_playable new_state (refresh_count + 1)
+      else
+        (new_state, refresh_count)
+    in
+    let (final_state, count) = refresh_until_playable enhanced_state 1 in
+    let msg = Printf.sprintf "Both stuck! Refreshed %d time%s." count (if count = 1 then "" else "s") in
+    (final_state, msg)
   else
     (enhanced_state, "")
 ;;
