@@ -146,6 +146,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                  }))
    
    | AI_move_continuous | Trigger_periodic_update ->
+      (* Log that we're being called *)
+      let () = Stdio.printf "⚡ Periodic update triggered! AI is playing...\n%!" in
       if model.enhanced_state.base_state.game_over then
          model
       else
@@ -164,16 +166,22 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              (* Try to make a move *)
              match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
              | Some ai_move ->
+                let () = Stdio.printf "🤖 AI found a move and is playing it!\n%!" in
                 (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
                  | Ok new_state ->
+                    let () = Stdio.printf "✅ AI successfully played a card!\n%!" in
                     (* Auto-draw immediately after playing *)
                     let state_with_draw = auto_draw_until_full new_state "Player2" in
                     (* Check if stuck after AI move *)
                     let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
                     (* Continue playing more cards *)
                     ai_play_all state_after_stuck (max_moves - 1)
-                 | Error _ -> enh_state)
-             | None -> enh_state
+                 | Error msg -> 
+                    let () = Stdio.printf "❌ AI move failed: %s\n%!" msg in
+                    enh_state)
+             | None -> 
+                let () = Stdio.printf "⚠️  AI has no valid moves right now\n%!" in
+                enh_state
          in
          
          (* Let AI play up to 5 cards per update cycle *)
