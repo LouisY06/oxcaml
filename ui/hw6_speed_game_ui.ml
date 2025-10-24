@@ -101,42 +101,26 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                  (* Check if stuck *)
                  let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
-                 (* After player plays, let AI make several moves quickly *)
-                 let rec ai_play_multiple (enh_state : Hw2_speed_logic.Enhanced_game_state.t) count =
-                   if count <= 0 || enh_state.base_state.game_over then
-                     enh_state
-                   else
-                     match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
-                     | Some ai_move ->
-                        (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
-                         | Ok new_state ->
-                            let state_with_draw = auto_draw_until_full new_state "Player2" in
-                            let state_with_stuck, _ = check_and_refresh_if_stuck state_with_draw in
-                            ai_play_multiple state_with_stuck (count - 1)
-                         | Error _ -> enh_state)
-                     | None -> enh_state
-                 in
-                 let final_state = ai_play_multiple state_after_stuck_check 3 in (* AI plays up to 3 cards after your move *)
-                 
-                 if final_state.base_state.game_over then
-                   (match final_state.base_state.winner with
+                 (* AI plays continuously via Clock.every - don't play AI moves here! *)
+                 if state_after_stuck_check.base_state.game_over then
+                   (match state_after_stuck_check.base_state.winner with
                     | Some Hw2_speed_logic.Player.Player1 -> 
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "🎉 YOU WIN! 🎉 All cards played! Click 'New Game' to play again."
                        }
                     | Some Hw2_speed_logic.Player.Player2 ->
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "😞 AI WINS! 😞 AI played all cards first. Click 'New Game' to try again."
                        }
                     | None ->
-                       { enhanced_state = final_state
+                       { enhanced_state = state_after_stuck_check
                        ; selected_card = None
                        ; game_message = "Game Over! Click 'New Game' to play again."
                        })
                  else
-                   { enhanced_state = final_state
+                   { enhanced_state = state_after_stuck_check
                    ; selected_card = None
                    ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
                    }
