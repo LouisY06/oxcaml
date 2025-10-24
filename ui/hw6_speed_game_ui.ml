@@ -59,8 +59,23 @@ let auto_draw_until_full (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
 (* Check if both players are stuck and refresh cards *)
 let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) 
   : Hw2_speed_logic.Enhanced_game_state.t * string =
-  if Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck enhanced_state then
+  let is_stuck = Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck enhanced_state in
+  let () = Stdio.printf "\n=== HANDS CHECK ===\n" in
+  let () = Stdio.printf "Player 1 hand: " in
+  let () = List.iter enhanced_state.base_state.player1_hand ~f:(fun c ->
+    Stdio.printf "%s " (Hw2_speed_logic.Card.to_string c)) in
+  let () = Stdio.printf "\nPlayer 2 hand: " in
+  let () = List.iter enhanced_state.base_state.player2_hand ~f:(fun c ->
+    Stdio.printf "%s " (Hw2_speed_logic.Card.to_string c)) in
+  let () = Stdio.printf "\nPile 1: %s | Pile 2: %s\n" 
+    (match enhanced_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
+    (match enhanced_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
+  let () = Stdio.printf "Both stuck? %b\n%!" is_stuck in
+  if is_stuck then
     let new_state = Hw2_speed_logic.Enhanced_game_state.refresh_center_cards enhanced_state in
+    let () = Stdio.printf "🔄 REFRESHING PILES! New Pile 1: %s | New Pile 2: %s\n%!"
+      (match new_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
+      (match new_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
     (new_state, "Both players stuck! Center cards refreshed.")
   else
     (enhanced_state, "")
