@@ -35,5 +35,33 @@
     
     <!-- Include the compiled Bonsai JavaScript -->
     <script src="_build/default/ui/hw6_speed_game_app.bc.js"></script>
+    <script>
+        // Wait for DOM to be fully loaded
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, checking for Bonsai app...');
+            
+            // Check if the app element exists
+            const appElement = document.getElementById('app');
+            if (!appElement) {
+                console.error('App element not found!');
+            } else {
+                console.log('App element found:', appElement);
+            }
+            
+            // Wait a bit for the Bonsai script to initialize
+            setTimeout(function() {
+                console.log('Checking if app has loaded...');
+                if (appElement.innerHTML.includes('Loading HW6 Speed Game UI...')) {
+                    console.error('Bonsai app failed to initialize - still showing loading message');
+                    appElement.innerHTML = '<div style="color: red; padding: 20px;">Error: Bonsai application failed to initialize. Check browser console for details.</div>';
+                }
+            }, 5000);
+        });
+        
+        // Catch any JavaScript errors
+        window.addEventListener('error', function(event) {
+            console.error('JavaScript error:', event.error);
+        });
+    </script>
 </body>
 </html>
