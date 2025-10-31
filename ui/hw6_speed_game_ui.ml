@@ -400,23 +400,23 @@ module Components = struct
          ; Node.div
               ~attrs:[ Attr.create "class" "game-info" ]
               [ Node.div ~attrs:[ Attr.create "class" "info-item" ]
-                   [ Node.strong [ Node.text "⚡ SPEED MODE: " ]
+                   [ Node.strong [ Node.text "SPEED MODE: " ]
                    ; Node.text "Both players play simultaneously! No turns! Play as fast as you can!"
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
-                   [ Node.strong [ Node.text "🎮 How to Play: " ]
+                   [ Node.strong [ Node.text "How to Play: " ]
                    ; Node.text "Click your card → Click center pile. Cards auto-draw after playing!"
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
-                   [ Node.strong [ Node.text "📋 Rules: " ]
+                   [ Node.strong [ Node.text "Rules: " ]
                    ; Node.text "Play cards ±1 rank from pile top. Aces play on 2 or King."
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
-                   [ Node.strong [ Node.text "🏆 Win: " ]
+                   [ Node.strong [ Node.text "Win: " ]
                    ; Node.text "Empty all 26 cards (5 in hand + 21 in draw pile) before the AI!"
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
-                   [ Node.strong [ Node.text "📜 Game Log:" ] ]
+                   [ Node.strong [ Node.text "Game Log:" ] ]
               ; game_log_html
               ]
          ]
