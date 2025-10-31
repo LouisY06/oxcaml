@@ -93,7 +93,7 @@ let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_s
     (* Keep refreshing until at least one player can play *)
     let rec refresh_until_playable state refresh_count =
       let new_state = Hw2_speed_logic.Enhanced_game_state.refresh_center_cards state in
-      let () = Stdio.printf "🔄 REFRESH #%d! New Pile 1: %s | New Pile 2: %s\n%!"
+      let () = Stdio.printf "REFRESH #%d! New Pile 1: %s | New Pile 2: %s\n%!"
         refresh_count
         (match new_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
         (match new_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
