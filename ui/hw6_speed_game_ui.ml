@@ -59,17 +59,35 @@ let auto_draw_until_full (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
 (* Check if both players are stuck and keep refreshing until someone can play *)
 let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_state.t) 
   : Hw2_speed_logic.Enhanced_game_state.t * string =
-  let is_stuck = Hw2_speed_logic.Enhanced_game_state.are_both_players_stuck enhanced_state in
-  let () = Stdio.printf "\n=== HANDS CHECK ===\n" in
+  let pile1_card = enhanced_state.base_state.pile1 in
+  let pile2_card = enhanced_state.base_state.pile2 in
+  
+  (* Check each player individually *)
+  let player1_can_play =
+    List.exists enhanced_state.base_state.player1_hand ~f:(fun card ->
+      Hw2_speed_logic.Card.can_play_on card pile1_card
+      || Hw2_speed_logic.Card.can_play_on card pile2_card)
+  in
+  let player2_can_play =
+    List.exists enhanced_state.base_state.player2_hand ~f:(fun card ->
+      Hw2_speed_logic.Card.can_play_on card pile1_card
+      || Hw2_speed_logic.Card.can_play_on card pile2_card)
+  in
+  
+  let is_stuck = (not player1_can_play) && (not player2_can_play) in
+  
+  let () = Stdio.printf "\n=== STUCK CHECK ===\n" in
   let () = Stdio.printf "Player 1 hand: " in
   let () = List.iter enhanced_state.base_state.player1_hand ~f:(fun c ->
     Stdio.printf "%s " (Hw2_speed_logic.Card.to_string c)) in
-  let () = Stdio.printf "\nPlayer 2 hand: " in
+  let () = Stdio.printf " (can play: %b)\n" player1_can_play in
+  let () = Stdio.printf "Player 2 hand: " in
   let () = List.iter enhanced_state.base_state.player2_hand ~f:(fun c ->
     Stdio.printf "%s " (Hw2_speed_logic.Card.to_string c)) in
-  let () = Stdio.printf "\nPile 1: %s | Pile 2: %s\n" 
-    (match enhanced_state.base_state.pile1 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
-    (match enhanced_state.base_state.pile2 with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
+  let () = Stdio.printf " (can play: %b)\n" player2_can_play in
+  let () = Stdio.printf "Pile 1: %s | Pile 2: %s\n" 
+    (match pile1_card with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty")
+    (match pile2_card with Some c -> Hw2_speed_logic.Card.to_string c | None -> "Empty") in
   let () = Stdio.printf "Both stuck? %b\n%!" is_stuck in
   if is_stuck then
     (* Keep refreshing until at least one player can play *)
