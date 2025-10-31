@@ -413,7 +413,7 @@ module Components = struct
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
                    [ Node.strong [ Node.text "🏆 Win: " ]
-                   ; Node.text "Empty all 20 cards (5 in hand + 15 in draw pile) before the AI!"
+                   ; Node.text "Empty all 26 cards (5 in hand + 21 in draw pile) before the AI!"
                    ]
               ; Node.div ~attrs:[ Attr.create "class" "info-item" ]
                    [ Node.strong [ Node.text "📜 Game Log:" ] ]
