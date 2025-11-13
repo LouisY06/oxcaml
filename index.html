@@ -26,19 +26,118 @@
             font-size: 18px;
             color: #666;
         }
+        .offline-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        .save-indicator {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background: rgba(0,0,0,0.7);
+            color: #0f0;
+            border-radius: 5px;
+            font-size: 11px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        .save-indicator.show {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
+    <div id="offline-status" class="offline-status">Online</div>
+    <div id="save-indicator" class="save-indicator">Game saved!</div>
     <div id="app">
         <div class="loading">Loading HW6 Speed Game UI...</div>
     </div>
-    
+
     <!-- Include the compiled Bonsai JavaScript -->
     <script src="hw6_speed_game_app.bc.js"></script>
     <script>
+        // Register Service Worker for offline support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Use relative path for GitHub Pages compatibility
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('Service Worker registered:', registration.scope);
+                        // Check for updates
+                        registration.addEventListener('updatefound', () => {
+                            console.log('Service Worker update found!');
+                        });
+                    })
+                    .catch((error) => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+        
+        // Monitor online/offline status
+        window.addEventListener('online', () => {
+            console.log('Back online!');
+            const statusEl = document.getElementById('offline-status');
+            if (statusEl) {
+                statusEl.textContent = 'Online';
+                statusEl.style.color = 'green';
+            }
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('Gone offline - using cached version');
+            const statusEl = document.getElementById('offline-status');
+            if (statusEl) {
+                statusEl.textContent = 'Offline';
+                statusEl.style.color = 'orange';
+            }
+        });
+        
+        // Show initial online status
+        if (!navigator.onLine) {
+            const statusEl = document.getElementById('offline-status');
+            if (statusEl) {
+                statusEl.textContent = 'Offline';
+                statusEl.style.color = 'orange';
+            }
+        }
+        
+        // Helper function to show save indicator (called from OCaml)
+        window.showSaveIndicator = function() {
+            const indicator = document.getElementById('save-indicator');
+            if (indicator) {
+                indicator.classList.add('show');
+                setTimeout(() => {
+                    indicator.classList.remove('show');
+                }, 1500);
+            }
+        };
+        
+        // Check if there's a saved game on load
+        window.addEventListener('load', () => {
+            try {
+                const saved = localStorage.getItem('speed_game_state');
+                if (saved) {
+                    console.log('Saved game found in local storage');
+                }
+            } catch (e) {
+                console.log('Could not check for saved game:', e);
+            }
+        });
+        
         // Bonsai handles the game loop in OCaml using Clock.every
-        // AI updates every 300ms automatically!
-        console.log('⚡ Speed Card Game - AI plays continuously via Bonsai Clock!');
+        // AI updates every 2 seconds automatically!
+        console.log('Speed Card Game - AI plays continuously via Bonsai Clock!');
+        console.log('Offline support enabled via Service Worker');
     </script>
 </body>
 </html>

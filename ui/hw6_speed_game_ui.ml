@@ -4,9 +4,11 @@ open Speed_logic_library
 open! Bonsai
 open! Bonsai.Let_syntax
 open! Bonsai_web
+open Js_of_ocaml
 
 (* HW6: Speed Card Game UI using Bonsai *)
 (* Simultaneous play - both players can play at any time! *)
+(* Offline support with Service Worker and Local Storage *)
 
 module Model = struct
    type t =
@@ -31,7 +33,67 @@ module Action = struct
     | Play_on_pile of int (* pile index 0 or 1 *)
     | AI_move_continuous (* AI plays continuously *)
     | Trigger_periodic_update (* Periodic game update *)
+    | Load_saved_game (* Load game from local storage *)
   [@@deriving sexp, compare]
+end
+
+(* Local Storage helpers for saving/loading game state *)
+module LocalStorage = struct
+  let storage_key = "speed_game_state"
+  
+  let save (model : Model.t) : unit =
+    try
+      let sexp = Model.sexp_of_t model in
+      let json_str = Sexp.to_string sexp in
+      match Js.Optdef.to_option Dom_html.window##.localStorage with
+      | None -> ()
+      | Some storage ->
+        let key = Js.string storage_key in
+        let value = Js.string json_str in
+        storage##setItem key value;
+      (* Show visual save indicator *)
+      (try
+         let show_indicator = Js.Unsafe.global##.showSaveIndicator in
+         if Js.Opt.test show_indicator then
+           (Js.Unsafe.fun_call show_indicator [||])
+       with _ -> ());
+      let () = Stdio.printf "Game saved to local storage\n%!" in
+      ()
+    with
+    | _ -> 
+      let () = Stdio.printf "Failed to save game to local storage\n%!" in
+      ()
+  
+  let load () : Model.t option =
+    try
+      match Js.Optdef.to_option Dom_html.window##.localStorage with
+      | None -> None
+      | Some storage ->
+        let key = Js.string storage_key in
+        match Js.Opt.to_option (storage##getItem key) with
+        | None -> None
+        | Some value ->
+          let json_str = Js.to_string value in
+          let sexp = Parsexp.Single.parse_string_exn json_str in
+          let model = Model.t_of_sexp sexp in
+          let () = Stdio.printf "Game loaded from local storage\n%!" in
+          Some model
+    with
+    | _ -> 
+      let () = Stdio.printf "Failed to load game from local storage\n%!" in
+      None
+  
+  let clear () : unit =
+    try
+      match Js.Optdef.to_option Dom_html.window##.localStorage with
+      | None -> ()
+      | Some storage ->
+        let key = Js.string storage_key in
+        storage##removeItem key;
+      let () = Stdio.printf "Local storage cleared\n%!" in
+      ()
+    with
+    | _ -> ()
 end
 
 (* Helper to auto-draw cards - keep drawing until hand has 5 cards *)
@@ -111,13 +173,22 @@ let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_s
 ;;
 
 let apply_action (action : Action.t) (model : Model.t) : Model.t =
-  match action with
+  let new_model = match action with
   | New_game ->
       let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
-      { enhanced_state = new_enhanced_state
+      let new_model : Model.t = { enhanced_state = new_enhanced_state
       ; selected_card = None
       ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
-    }
+      } in
+      LocalStorage.clear (); (* Clear saved game when starting new *)
+      new_model
+  
+  | Load_saved_game ->
+      (match LocalStorage.load () with
+       | Some saved_model -> 
+         { saved_model with game_message = "Game restored from local storage!" }
+       | None -> 
+         { model with game_message = "No saved game found." })
   
   | Select_card card ->
       if model.enhanced_state.base_state.game_over then
@@ -135,7 +206,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          (match model.selected_card with
           | None -> 
              { model with game_message = "Select a card from your hand first!" }
-          | Some card ->
+  | Some card -> 
              let player_id = "Player1" in
              let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
                (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
@@ -243,6 +314,12 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
            ; selected_card = model.selected_card
            ; game_message = model.game_message
            }
+  in
+  (* Auto-save after every action (except Load_saved_game to avoid recursion) *)
+  (match action with
+   | Load_saved_game -> () (* Don't save when loading *)
+   | _ -> LocalStorage.save new_model);
+  new_model
 ;;
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
