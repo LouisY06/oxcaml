@@ -508,7 +508,12 @@ let app =
     Bonsai.state_machine0
       (module Model)
       (module Action)
-      ~default_model:Model.initial
+      ~default_model:
+        (* Try to load from local storage on startup, fallback to initial *)
+        (match LocalStorage.load () with
+         | Some saved_model -> 
+           { saved_model with game_message = "Welcome back! Your game has been restored." }
+         | None -> Model.initial)
       ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
   in
 
