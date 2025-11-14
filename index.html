@@ -65,25 +65,46 @@
     <!-- Include the compiled Bonsai JavaScript -->
     <script src="hw6_speed_game_app.bc.js"></script>
     <script>
-        // Register Service Worker for offline support
+        // ============================================================
+        // SERVICE WORKER REGISTRATION
+        // ============================================================
+        // Service workers enable offline functionality by caching files.
+        // They run in the background and intercept network requests.
+        // 
+        // Registration process:
+        // 1. Check if browser supports service workers
+        // 2. Wait for page load to avoid blocking initial render
+        // 3. Register the service worker file (sw.js)
+        // 4. Handle registration success/failure
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Use relative path for GitHub Pages compatibility
+                // Use relative path './sw.js' for GitHub Pages compatibility
+                // Absolute paths like '/sw.js' don't work on GitHub Pages subdirectories
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
                         console.log('Service Worker registered:', registration.scope);
-                        // Check for updates
+                        // Listen for service worker updates
+                        // When a new version is detected, the browser will download it
                         registration.addEventListener('updatefound', () => {
                             console.log('Service Worker update found!');
+                            // The new service worker will install and activate
+                            // Users will get the update on next page load
                         });
                     })
                     .catch((error) => {
                         console.log('Service Worker registration failed:', error);
-                    });
+                        // If registration fails, the app still works but without offline support
+                });
             });
         }
         
-        // Monitor online/offline status
+        // ============================================================
+        // ONLINE/OFFLINE STATUS MONITORING
+        // ============================================================
+        // Monitor network connectivity and update UI indicator
+        // This helps users know if they're using cached content
+        
+        // Event fires when browser detects internet connection restored
         window.addEventListener('online', () => {
             console.log('Back online!');
             const statusEl = document.getElementById('offline-status');
@@ -93,6 +114,7 @@
             }
         });
         
+        // Event fires when browser detects internet connection lost
         window.addEventListener('offline', () => {
             console.log('Gone offline - using cached version');
             const statusEl = document.getElementById('offline-status');
@@ -102,7 +124,8 @@
             }
         });
         
-        // Show initial online status
+        // Check initial connection status on page load
+        // navigator.onLine may not be 100% accurate but gives a good indication
         if (!navigator.onLine) {
             const statusEl = document.getElementById('offline-status');
             if (statusEl) {
@@ -111,25 +134,39 @@
             }
         }
         
-        // Helper function to show save indicator (called from OCaml)
+        // ============================================================
+        // LOCAL STORAGE HELPER - Save Indicator
+        // ============================================================
+        // This function is called from OCaml code when game state is saved
+        // It shows a visual indicator to the user that their progress was saved
         window.showSaveIndicator = function() {
             const indicator = document.getElementById('save-indicator');
             if (indicator) {
+                // Add 'show' class to make indicator visible
                 indicator.classList.add('show');
+                // Remove 'show' class after 1.5 seconds (fade out)
                 setTimeout(() => {
                     indicator.classList.remove('show');
                 }, 1500);
             }
         };
         
-        // Check if there's a saved game on load
+        // ============================================================
+        // LOCAL STORAGE CHECK - Detect Saved Game
+        // ============================================================
+        // Check if there's a saved game state in localStorage on page load
+        // This is just for logging - the actual loading happens in OCaml
         window.addEventListener('load', () => {
             try {
+                // localStorage is a key-value store that persists across page reloads
+                // It's part of the Web Storage API (along with sessionStorage)
                 const saved = localStorage.getItem('speed_game_state');
                 if (saved) {
                     console.log('Saved game found in local storage');
+                    // The OCaml code will automatically load this on app initialization
                 }
             } catch (e) {
+                // localStorage may be disabled or unavailable (e.g., private browsing)
                 console.log('Could not check for saved game:', e);
             }
         });

@@ -37,63 +37,131 @@ module Action = struct
   [@@deriving sexp, compare]
 end
 
-(* Local Storage helpers for saving/loading game state *)
+(* ============================================================
+   LOCAL STORAGE MODULE - Persistent Game State Storage
+   ============================================================
+   
+   Local Storage is part of the Web Storage API that allows
+   web applications to store data in the browser that persists
+   across page reloads and browser sessions.
+   
+   Key features:
+   - Data persists until explicitly cleared or user clears browser data
+   - Storage limit: ~5-10MB per domain (varies by browser)
+   - Synchronous API (blocks until complete)
+   - Only stores strings (we serialize OCaml data to S-expressions)
+   - Domain-specific (data only accessible from same origin)
+   
+   We use Local Storage to:
+   1. Save game state after every action (auto-save)
+   2. Restore game state on page refresh
+   3. Enable offline play with saved progress
+   
+   The game state is serialized using S-expressions (sexp) which
+   is a text-based format that can be converted to/from OCaml types.
+*)
 module LocalStorage = struct
+  (* Storage key - the name used to store/retrieve game state *)
   let storage_key = "speed_game_state"
   
+  (* ============================================================
+     SAVE - Store game state in Local Storage
+     ============================================================
+     Serializes the current game model to a string and stores it
+     in the browser's localStorage. This happens automatically
+     after every game action (card play, AI move, etc.)
+  *)
   let save (model : Model.t) : unit =
     try
+      (* Step 1: Convert OCaml model to S-expression *)
+      (* S-expressions are a text format that can represent OCaml data *)
       let sexp = Model.sexp_of_t model in
+      
+      (* Step 2: Convert S-expression to string *)
+      (* This creates a JSON-like text representation of the game state *)
       let json_str = Sexp.to_string sexp in
+      
+      (* Step 3: Access browser's localStorage API *)
+      (* localStorage may not be available (private browsing, disabled, etc.) *)
       match Js.Optdef.to_option Dom_html.window##.localStorage with
-      | None -> ()
+      | None -> () (* localStorage not available, silently fail *)
       | Some storage ->
+        (* Step 4: Store the serialized game state *)
+        (* localStorage.setItem(key, value) stores a string value *)
         let key = Js.string storage_key in
         let value = Js.string json_str in
         storage##setItem key value;
-      (* Show visual save indicator *)
-      (try
-         let show_indicator = Js.Unsafe.global##.showSaveIndicator in
-         if Js.Opt.test show_indicator then
-           (Js.Unsafe.fun_call show_indicator [||])
-       with _ -> ());
-      let () = Stdio.printf "Game saved to local storage\n%!" in
-      ()
+        
+        (* Step 5: Show visual feedback to user *)
+        (* Call JavaScript function to display "Game saved!" indicator *)
+        (try
+           let show_indicator = Js.Unsafe.global##.showSaveIndicator in
+           if Js.Opt.test show_indicator then
+             (Js.Unsafe.fun_call show_indicator [||])
+         with _ -> ());
+        
+        (* Log success for debugging *)
+        let () = Stdio.printf "Game saved to local storage\n%!" in
+        ()
     with
     | _ -> 
+      (* If anything fails, log error but don't crash *)
       let () = Stdio.printf "Failed to save game to local storage\n%!" in
       ()
   
+  (* ============================================================
+     LOAD - Retrieve game state from Local Storage
+     ============================================================
+     Reads the saved game state from localStorage and deserializes
+     it back into an OCaml Model.t. Returns None if no saved game
+     exists or if loading fails.
+  *)
   let load () : Model.t option =
     try
+      (* Step 1: Access browser's localStorage *)
       match Js.Optdef.to_option Dom_html.window##.localStorage with
-      | None -> None
+      | None -> None (* localStorage not available *)
       | Some storage ->
+        (* Step 2: Retrieve the stored string value *)
         let key = Js.string storage_key in
         match Js.Opt.to_option (storage##getItem key) with
-        | None -> None
+        | None -> None (* No saved game found *)
         | Some value ->
+          (* Step 3: Convert string back to S-expression *)
           let json_str = Js.to_string value in
+          (* Parse the S-expression string *)
           let sexp = Parsexp.Single.parse_string_exn json_str in
+          
+          (* Step 4: Deserialize S-expression back to OCaml Model.t *)
           let model = Model.t_of_sexp sexp in
+          
+          (* Log success for debugging *)
           let () = Stdio.printf "Game loaded from local storage\n%!" in
           Some model
     with
     | _ -> 
+      (* If deserialization fails (corrupted data, version mismatch, etc.) *)
       let () = Stdio.printf "Failed to load game from local storage\n%!" in
       None
   
+  (* ============================================================
+     CLEAR - Remove saved game state from Local Storage
+     ============================================================
+     Deletes the saved game state. Called when starting a new game
+     to ensure old saved state doesn't interfere.
+  *)
   let clear () : unit =
     try
       match Js.Optdef.to_option Dom_html.window##.localStorage with
-      | None -> ()
+      | None -> () (* localStorage not available *)
       | Some storage ->
+        (* localStorage.removeItem(key) deletes the stored value *)
         let key = Js.string storage_key in
         storage##removeItem key;
-      let () = Stdio.printf "Local storage cleared\n%!" in
-      ()
+        let () = Stdio.printf "Local storage cleared\n%!" in
+        ()
     with
-    | _ -> ()
+    | _ -> () (* Silently fail if clear doesn't work *)
 end
 
 (* Helper to auto-draw cards - keep drawing until hand has 5 cards *)
