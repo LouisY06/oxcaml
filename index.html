@@ -95,10 +95,13 @@
         };
         
         window.setFirebaseAuthCallback = function(callback) {
+            console.log('Setting up Firebase auth callback...');
             // Import onAuthStateChanged from Firebase auth module
             import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ onAuthStateChanged, getRedirectResult }) => {
-                // Set up auth state listener
+                console.log('Firebase auth module imported, setting up listener');
+                // Set up auth state listener - this fires immediately with current user if signed in
                 const unsubscribe = onAuthStateChanged(auth, (user) => {
+                    console.log('Auth state changed, user:', user ? user.email : 'signed out');
                     callback(user);
                 });
                 
@@ -112,6 +115,9 @@
                     // Ignore redirect errors - user might not have used redirect
                     // This is normal if not using Google sign-in
                 });
+                
+                // Return unsubscribe function (though OCaml doesn't use it)
+                return unsubscribe;
             }).catch((error) => {
                 console.error('Error setting up auth callback:', error);
                 // If import fails, the app should still work, just without auth

@@ -171,17 +171,27 @@ module Auth = struct
     try
       let callback_js =
         Js.wrap_callback (fun user ->
+          let () = Stdio.printf "Firebase auth callback fired, user: %s\n%!" 
+            (match Js.Optdef.to_option user with
+             | None -> "None (signed out)"
+             | Some u -> 
+               let email = try Js.to_string (Js.Unsafe.get u (Js.string "email")) with _ -> "no email" in
+               Printf.sprintf "Some (%s)" email) in
           match Js.Optdef.to_option user with
           | None -> callback SignedOut
           | Some u -> callback (get_user_info u))
       in
       let set_callback = Js.Unsafe.global##.setFirebaseAuthCallback in
       if Js.Optdef.test set_callback then
+        let () = Stdio.printf "Calling setFirebaseAuthCallback\n%!" in
         ignore (Js.Unsafe.fun_call set_callback [| Js.Unsafe.inject callback_js |])
       else
-        () (* Firebase not ready yet *)
+        let () = Stdio.printf "setFirebaseAuthCallback not available yet\n%!" in
+        () (* Firebase not ready yet, will be called again later *)
     with
-    | _ -> () (* Firebase not initialized, will be called again later *)
+    | e -> 
+      let () = Stdio.printf "Error in on_auth_state_changed: %s\n%!" (Exn.to_string e) in
+      () (* Firebase not initialized, will be called again later *)
 end
 
 module Firestore = struct
