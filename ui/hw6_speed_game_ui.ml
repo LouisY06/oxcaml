@@ -17,6 +17,12 @@ module Deferred = Firebase_bindings.Deferred
 module Firebase_bindings = Firebase_bindings
 
 module Model = struct
+   type screen =
+     | LoginScreen
+     | ModeSelectionScreen
+     | GameScreen
+   [@@deriving sexp, compare, equal]
+   
    type game_mode =
      | SinglePlayer
      | OnlineMultiplayer of { match_id : string; player_id : string; opponent_id : string }
@@ -28,28 +34,28 @@ module Model = struct
    [@@deriving sexp, compare, equal]
    
    type t =
-      { enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
+      { screen : screen
+      ; enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
       ; selected_card : Hw2_speed_logic.Card.t option
       ; game_message : string
       ; auth_state : auth_state
       ; game_mode : game_mode
       ; login_email : string
       ; login_password : string
-      ; show_login : bool
       ; matchmaking_status : string (* "idle" | "searching" | "matched" | "error" *)
       ; firestore_unsubscribe : (Js.Unsafe.any option [@sexp.opaque] [@compare.ignore] [@equal.ignore]) (* For cleaning up listeners *)
       }
   [@@deriving sexp, compare, equal]
 
    let initial =
-      { enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
+      { screen = LoginScreen
+      ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
       ; selected_card = None
       ; game_message = "Welcome! Click on your card, then click on a center pile to play!"
       ; auth_state = NotAuthenticated
       ; game_mode = SinglePlayer
       ; login_email = ""
       ; login_password = ""
-      ; show_login = true
       ; matchmaking_status = "idle"
       ; firestore_unsubscribe = None
       }
@@ -74,6 +80,9 @@ module Action = struct
     | Cancel_matchmaking
     | Match_found of { match_id : string; player_id : string; opponent_id : string }
     | Game_state_synced of Hw2_speed_logic.Enhanced_game_state.t (* From Firestore *)
+    | Select_single_player (* Choose to play against AI *)
+    | Select_multiplayer (* Choose to play online *)
+    | Go_to_mode_selection (* Go back to mode selection *)
   [@@deriving sexp, compare]
 end
 
@@ -459,8 +468,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
        | None -> ());
       { model with
         auth_state = Model.NotAuthenticated
+      ; screen = LoginScreen
       ; game_mode = SinglePlayer
-      ; show_login = true
       ; matchmaking_status = "idle"
       ; firestore_unsubscribe = None
       ; game_message = "Signed out successfully."
@@ -472,18 +481,66 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         | Firebase_bindings.Auth.SignedIn { uid; email; display_name } ->
           Model.Authenticated { uid; email; display_name }
       in
+      (match new_auth_state with
+       | Model.NotAuthenticated ->
+         { model with
+           auth_state = new_auth_state
+         ; screen = LoginScreen
+         }
+       | Model.Authenticated _ ->
+         { model with
+           auth_state = new_auth_state
+         ; screen = ModeSelectionScreen
+         })
+  
+  | Select_single_player ->
+      let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
       { model with
-        auth_state = new_auth_state
-      ; show_login = (match new_auth_state with Model.NotAuthenticated -> true | _ -> false)
+        screen = GameScreen
+      ; game_mode = SinglePlayer
+      ; enhanced_state = new_enhanced_state
+      ; selected_card = None
+      ; game_message = "Playing against AI! Click on your card, then click on a center pile to play!"
+      }
+  
+  | Select_multiplayer ->
+      (match model.auth_state with
+       | Model.NotAuthenticated ->
+         { model with screen = LoginScreen; game_message = "Please sign in first!" }
+       | Model.Authenticated _ ->
+         (* Matchmaking will be started in the state machine's apply_action callback *)
+         { model with
+           screen = GameScreen
+         ; matchmaking_status = "searching"
+         ; game_message = "Searching for opponent..."
+         })
+  
+  | Go_to_mode_selection ->
+      (* Clean up any active game/matchmaking *)
+      (match model.firestore_unsubscribe with
+       | Some unsubscribe ->
+         (try
+           let unsubscribe_fn = Js.Unsafe.get unsubscribe (Js.string "unsubscribe") in
+           ignore (Js.Unsafe.fun_call unsubscribe_fn [||])
+         with _ -> ())
+       | None -> ());
+      { model with
+        screen = ModeSelectionScreen
+      ; game_mode = SinglePlayer
+      ; matchmaking_status = "idle"
+      ; firestore_unsubscribe = None
       }
   
   | Start_matchmaking ->
       (match model.auth_state with
        | Model.NotAuthenticated ->
-         { model with game_message = "Please sign in first to play online!" }
+         { model with screen = LoginScreen; game_message = "Please sign in first to play online!" }
        | Model.Authenticated { uid; _ } ->
          (* Start matchmaking process - this will be handled via Effect *)
-          ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid (fun _action -> Effect.return ())));
+         ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid (fun action -> 
+           match action with
+           | Action.Match_found _ -> Effect.return () (* Will be handled by action *)
+           | _ -> Effect.return ())));
          { model with matchmaking_status = "searching"; game_message = "Searching for opponent..." })
   
   | Cancel_matchmaking ->
@@ -491,11 +548,11 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Match_found { match_id; player_id; opponent_id } ->
       let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
-      (* Note: Firestore listener setup needs inject function, which we don't have here *)
-      (* This will be set up separately when the match is found *)
-       ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
+      (* Sync initial game state to Firestore *)
+      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
       { model with
-        game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+        screen = GameScreen
+      ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
       ; enhanced_state = new_enhanced_state
       ; selected_card = None
       ; matchmaking_status = "matched"
@@ -696,111 +753,130 @@ module Components = struct
             ]
          [ Node.text (if is_face_down then "?" else rank_str ^ suit_symbol) ]
 
-   let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
-      let open Hw2_speed_logic in
+   (* Login screen *)
+   let login_screen (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Vdom in
-
-      (* Login form *)
-      let login_form_html =
-        if model.show_login then
-          Node.div
-            ~attrs:[ Attr.create "class" "login-form"; Attr.create "style" "padding: 20px; border: 2px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: #f9f9f9;" ]
-            [ Node.h2 [ Node.text "Sign In / Sign Up" ]
+      Node.div
+        ~attrs:[ Attr.create "class" "login-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
+        [ Node.div
+            ~attrs:[ Attr.create "class" "login-form"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
+            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #333;" ] [ Node.text "Speed Card Game" ]
+            ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 20px; color: #666; font-size: 18px;" ] [ Node.text "Sign In / Sign Up" ]
             ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
-                [ Node.label [ Node.text "Email: " ]
+                ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
+                [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
                 ; Node.input
                     ~attrs:
                       [ Attr.create "type" "email"
                       ; Attr.create "value" model.login_email
-                      ; Attr.create "style" "padding: 5px; margin-left: 10px; width: 200px;"
+                      ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
                       ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
                       ]
                     ()
                 ]
             ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
-                [ Node.label [ Node.text "Password: " ]
+                ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
+                [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Password" ]
                 ; Node.input
                     ~attrs:
                       [ Attr.create "type" "password"
                       ; Attr.create "value" model.login_password
-                      ; Attr.create "style" "padding: 5px; margin-left: 10px; width: 200px;"
+                      ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
                       ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
                       ]
                     ()
                 ]
             ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
+                ~attrs:[ Attr.create "style" "margin: 20px 0 10px 0; display: flex; gap: 10px;" ]
                 [ Node.button
                     ~attrs:
                       [ on_click (fun _ -> inject Action.Sign_in)
-                      ; Attr.create "style" "padding: 10px 20px; margin-right: 10px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px;"
+                      ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
                       ]
                     [ Node.text "Sign In" ]
                 ; Node.button
                     ~attrs:
                       [ on_click (fun _ -> inject Action.Sign_up)
-                      ; Attr.create "style" "padding: 10px 20px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px;"
+                      ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
                       ]
                     [ Node.text "Sign Up" ]
                 ]
+            ; (if not (String.is_empty model.game_message) && String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." then
+                Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
+              else if not (String.is_empty model.game_message) then
+                Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; text-align: center; color: #c62828;" ] [ Node.text model.game_message ]
+              else Node.div [])
             ]
-        else
-          Node.div
-            ~attrs:[ Attr.create "class" "user-info"; Attr.create "style" "padding: 10px; background: #e8f5e9; border-radius: 5px; margin-bottom: 10px;" ]
-            [ Node.span
-                ~attrs:[ Attr.create "style" "margin-right: 20px;" ]
-                [ Node.text
-                    (match model.auth_state with
-                     | Model.NotAuthenticated -> "Not signed in"
-                     | Model.Authenticated { email; display_name = _; _ } ->
-                       Printf.sprintf "Signed in as: %s" (Option.value email ~default:"User"))
+        ]
+   
+   (* Mode selection screen *)
+   let mode_selection_screen (model : Model.t) (inject : Action.t -> unit Effect.t) =
+      let open Vdom in
+      Node.div
+        ~attrs:[ Attr.create "class" "mode-selection-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
+        [ Node.div
+            ~attrs:[ Attr.create "class" "mode-selection"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 400px; text-align: center;" ]
+            [ Node.h1 ~attrs:[ Attr.create "style" "margin-bottom: 30px; color: #333;" ] [ Node.text "Choose Game Mode" ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "margin: 20px 0;" ]
+                [ Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Select_single_player)
+                      ; Attr.create "style" "padding: 20px 40px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                      ]
+                    [ Node.text "Play Against AI" ]
+                ; Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Select_multiplayer)
+                      ; Attr.create "style" "padding: 20px 40px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                      ]
+                    [ Node.text "Play Online (Multiplayer)" ]
                 ]
-            ; Node.button
-                ~attrs:
-                  [ on_click (fun _ -> inject Action.Sign_out)
-                  ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
-                  ]
-                [ Node.text "Sign Out" ]
-            ]
-      in
-
-      (* Matchmaking controls *)
-      let matchmaking_html =
-        match model.auth_state with
-        | Model.NotAuthenticated -> Node.div []
-        | Model.Authenticated _ ->
-          Node.div
-            ~attrs:[ Attr.create "class" "matchmaking"; Attr.create "style" "padding: 10px; background: #fff3e0; border-radius: 5px; margin-bottom: 10px;" ]
-            [ Node.div
-                ~attrs:[ Attr.create "style" "margin-bottom: 10px;" ]
-                [ Node.text
-                    (match model.game_mode with
-                     | SinglePlayer -> "Playing against AI"
-                     | OnlineMultiplayer { opponent_id; _ } -> Printf.sprintf "Playing against: %s" opponent_id)
-                ]
-            ; (match model.matchmaking_status with
-               | "searching" ->
+            ; (match model.auth_state with
+               | Model.Authenticated { email; _ } ->
                  Node.div
-                   ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
-                   [ Node.text "Searching for opponent... "
+                   ~attrs:[ Attr.create "style" "margin-top: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px;" ]
+                   [ Node.text (Printf.sprintf "Signed in as: %s" (Option.value email ~default:"User"))
                    ; Node.button
                        ~attrs:
-                         [ on_click (fun _ -> inject Action.Cancel_matchmaking)
-                         ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                         [ on_click (fun _ -> inject Action.Sign_out)
+                         ; Attr.create "style" "margin-left: 10px; padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
                          ]
-                       [ Node.text "Cancel" ]
+                       [ Node.text "Sign Out" ]
                    ]
-               | "matched" -> Node.div []
-               | _ ->
-                 Node.button
-                   ~attrs:
-                     [ on_click (fun _ -> inject Action.Start_matchmaking)
-                     ; Attr.create "style" "padding: 10px 20px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 5px;"
-                     ]
-                   [ Node.text "Find Online Opponent" ])
+               | _ -> Node.div [])
+            ; (if String.equal model.matchmaking_status "searching" then
+                Node.div
+                  ~attrs:[ Attr.create "style" "margin-top: 20px; padding: 15px; background: #fff3e0; border-radius: 5px; color: #e65100;" ]
+                  [ Node.text "Searching for opponent... "
+                  ; Node.button
+                      ~attrs:
+                        [ on_click (fun _ -> inject Action.Cancel_matchmaking)
+                        ; Attr.create "style" "margin-left: 10px; padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                        ]
+                      [ Node.text "Cancel" ]
+                  ]
+              else Node.div [])
             ]
+        ]
+
+   let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
+      let open Hw2_speed_logic in
+      let open Vdom in
+
+      (* Route to appropriate screen *)
+      match model.screen with
+      | Model.LoginScreen -> login_screen model inject
+      | Model.ModeSelectionScreen -> mode_selection_screen model inject
+      | Model.GameScreen ->
+      (* Game screen *)
+      let matchmaking_html =
+        match model.game_mode with
+        | SinglePlayer -> Node.div []
+        | OnlineMultiplayer { opponent_id; _ } ->
+          Node.div
+            ~attrs:[ Attr.create "class" "matchmaking"; Attr.create "style" "padding: 10px; background: #fff3e0; border-radius: 5px; margin-bottom: 10px;" ]
+            [ Node.text (Printf.sprintf "Playing against: %s" opponent_id) ]
       in
 
       (* Player hand *)
@@ -861,7 +937,28 @@ module Components = struct
 
       Node.div
          ~attrs:[ Attr.create "class" "game-container" ]
-         [ login_form_html
+         [ (* User info and back button *)
+           (match model.auth_state with
+            | Model.Authenticated { email; _ } ->
+              Node.div
+                ~attrs:[ Attr.create "class" "user-info"; Attr.create "style" "padding: 10px; background: #e8f5e9; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;" ]
+                [ Node.span
+                    ~attrs:[ Attr.create "style" "margin-right: 20px;" ]
+                    [ Node.text (Printf.sprintf "Signed in as: %s" (Option.value email ~default:"User")) ]
+                ; Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Go_to_mode_selection)
+                      ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 3px; margin-right: 10px;"
+                      ]
+                    [ Node.text "Back to Menu" ]
+                ; Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Sign_out)
+                      ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                      ]
+                    [ Node.text "Sign Out" ]
+                ]
+            | _ -> Node.div [])
          ; matchmaking_html
          ; Node.div
               ~attrs:[ Attr.create "class" "game-header" ]
@@ -880,7 +977,12 @@ module Components = struct
          ; Node.div
               ~attrs:[ Attr.create "class" "game-board" ]
               [ Node.div ~attrs:[ Attr.create "class" "player-area player2-area" ]
-                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] [ Node.text "AI Player" ]
+                   [ Node.div ~attrs:[ Attr.create "class" "player-label" ] 
+                       [ Node.text 
+                           (match model.game_mode with
+                            | SinglePlayer -> "AI Player"
+                            | OnlineMultiplayer { opponent_id; _ } -> Printf.sprintf "Opponent: %s" opponent_id)
+                       ]
                    ; ai_hand_html
                    ; Node.div ~attrs:[ Attr.create "class" "stock-pile" ]
                         [ Node.div ~attrs:[ Attr.create "class" "stock-label" ]
@@ -961,6 +1063,13 @@ let app =
             | None -> new_model)
          | Start_matchmaking, _ ->
            (* Re-inject start_matchmaking with proper inject function *)
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+              new_model
+            | _ -> new_model)
+         | Select_multiplayer, _ ->
+           (* Start matchmaking when multiplayer is selected *)
            (match new_model.auth_state with
             | Model.Authenticated { uid; _ } ->
               ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
