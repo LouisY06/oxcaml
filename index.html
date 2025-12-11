@@ -251,7 +251,24 @@
     <!-- Include the compiled Bonsai JavaScript -->
     <script>
         console.log('About to load OCaml app...');
+        // Stub out threading functions to prevent errors (js_of_ocaml doesn't support threads)
+        if (typeof jsoo_runtime !== 'undefined' && jsoo_runtime) {
+            if (!jsoo_runtime.caml_thread_initialize) {
+                jsoo_runtime.caml_thread_initialize = function() { return 0; };
+            }
+        }
+        // Also stub on global runtime object if it exists
+        if (typeof runtime !== 'undefined' && runtime) {
+            if (!runtime.caml_thread_initialize) {
+                runtime.caml_thread_initialize = function() { return 0; };
+            }
+        }
         window.addEventListener('error', (e) => {
+            // Ignore threading errors - they're harmless
+            if (e.message && e.message.includes('caml_thread_initialize')) {
+                console.log('Threading error suppressed (expected in js_of_ocaml)');
+                return;
+            }
             console.error('JavaScript error:', e.error, e.message, e.filename, e.lineno);
         });
     </script>
