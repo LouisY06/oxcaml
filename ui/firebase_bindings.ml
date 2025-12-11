@@ -1,7 +1,54 @@
 open! Core
-open Async_kernel
 open! Bonsai_web
 open Js_of_ocaml
+
+(* Simple Deferred implementation using JavaScript promises - no threading required *)
+module Deferred_impl = struct
+  type 'a t = Js.Unsafe.any  (* JavaScript Promise *)
+  
+  let return (x : 'a) : 'a t =
+    Js.Unsafe.fun_call (Js.Unsafe.get Js.Unsafe.global##.Promise (Js.string "resolve")) [| Js.Unsafe.inject x |]
+  
+  let bind (d : 'a t) ~f : 'b t =
+    let f_js = Js.wrap_callback (fun x -> f x) in
+    Js.Unsafe.fun_call (Js.Unsafe.get d (Js.string "then")) [| Js.Unsafe.inject f_js |]
+  
+  module Let_syntax = struct
+    module Let_syntax = struct
+      let return = return
+      let bind = bind
+      let map d ~f = bind d ~f:(fun x -> return (f x))
+    end
+  end
+end
+
+module Deferred = Deferred_impl
+
+module Ivar = struct
+  type 'a t = {
+    mutable value : 'a option;
+    mutable resolve_fn : ('a -> unit) option;
+    promise : 'a Deferred_impl.t;
+  }
+  
+  let create () : 'a t =
+    let resolve_ref = ref None in
+    let promise_constructor = Js.Unsafe.get Js.Unsafe.global##.Promise (Js.string "constructor") in
+    let executor = Js.wrap_callback (fun resolve _reject ->
+        resolve_ref := Some (fun x -> ignore (Js.Unsafe.fun_call resolve [| Js.Unsafe.inject x |]))
+      ) in
+    let promise = Js.Unsafe.fun_call promise_constructor [| Js.Unsafe.inject executor |] in
+    let ivar = { value = None; resolve_fn = !resolve_ref; promise } in
+    resolve_ref := Some (fun x -> match ivar.resolve_fn with Some f -> f x | None -> ());
+    ivar
+  
+  let fill (ivar : 'a t) (x : 'a) : unit =
+    match ivar.resolve_fn with
+    | Some resolve -> resolve x
+    | None -> ivar.value <- Some x
+  
+  let read (ivar : 'a t) : 'a Deferred.t = ivar.promise
+end
 
 (* Firebase Authentication and Firestore bindings for OCaml *)
 

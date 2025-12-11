@@ -1,11 +1,13 @@
 open! Core
 open! Base
-open Async_kernel
 open Speed_logic_library
 open! Bonsai
 open! Bonsai.Let_syntax
 open! Bonsai_web
 open Js_of_ocaml
+
+(* Use the Deferred module from Firebase_bindings *)
+module Deferred = Firebase_bindings.Deferred
 
 (* HW6: Speed Card Game UI using Bonsai *)
 (* Simultaneous play - both players can play at any time! *)
