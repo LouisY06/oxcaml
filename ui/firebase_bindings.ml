@@ -26,26 +26,38 @@ module Deferred = Deferred_impl
 
 module Ivar = struct
   type 'a t = {
-    mutable value : 'a option;
     mutable resolve_fn : ('a -> unit) option;
     promise : 'a Deferred_impl.t;
   }
   
   let create () : 'a t =
     let resolve_ref = ref None in
+    (* Create executor - this is called immediately when Promise is constructed *)
+    (* We need to use a named function to avoid "Function statements require a function name" error *)
+    let executor = 
+      let named_executor resolve _reject =
+        (* Store the resolve function so we can call it later from fill *)
+        resolve_ref := Some (fun x -> 
+          try
+            ignore (Js.Unsafe.fun_call resolve [| Js.Unsafe.inject x |])
+          with e ->
+            let () = Stdio.printf "Error calling resolve: %s\n%!" (Exn.to_string e) in
+            ())
+      in
+      Js.wrap_callback named_executor
+    in
+    (* Create Promise using new Promise(executor) syntax *)
     let promise_constructor = Js.Unsafe.get Js.Unsafe.global##.Promise (Js.string "constructor") in
-    let executor = Js.wrap_callback (fun resolve _reject ->
-        resolve_ref := Some (fun x -> ignore (Js.Unsafe.fun_call resolve [| Js.Unsafe.inject x |]))
-      ) in
-    let promise = Js.Unsafe.fun_call promise_constructor [| Js.Unsafe.inject executor |] in
-    let ivar = { value = None; resolve_fn = !resolve_ref; promise } in
-    resolve_ref := Some (fun x -> match ivar.resolve_fn with Some f -> f x | None -> ());
-    ivar
+    let promise = Js.Unsafe.new_obj promise_constructor [| Js.Unsafe.inject executor |] in
+    (* resolve_ref should be set now since executor was called synchronously *)
+    { resolve_fn = !resolve_ref; promise }
   
   let fill (ivar : 'a t) (x : 'a) : unit =
     match ivar.resolve_fn with
     | Some resolve -> resolve x
-    | None -> ivar.value <- Some x
+    | None -> 
+      (* Promise executor hasn't been called yet - this shouldn't happen but handle gracefully *)
+      ()
   
   let read (ivar : 'a t) : 'a Deferred.t = ivar.promise
 end
