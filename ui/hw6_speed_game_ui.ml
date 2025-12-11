@@ -1274,11 +1274,13 @@ let app =
                Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
            new_model
          | Sign_in_with_google ->
-           (* Handle Google sign in errors *)
+           (* Handle Google sign in - uses redirect, so page will navigate away *)
            ignore (Deferred.bind ~f:(function
-             | Ok _ -> Deferred.return ()
+             | Ok _ -> Deferred.return () (* Should not happen with redirect *)
              | Error msg -> 
-               ignore (inject (Action.Update_login_error msg));
+               (* "Redirect in progress" is expected, don't show as error *)
+               if not (String.equal msg "Redirect in progress") then
+                 ignore (inject (Action.Update_login_error msg));
                Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_google ()));
            new_model
          | Load_player_stats ->

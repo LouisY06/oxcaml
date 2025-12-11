@@ -141,8 +141,17 @@ module Auth = struct
       let%bind.Deferred result = promise_to_deferred promise in
       let success = Js.Unsafe.get result (Js.string "success") in
       if Js.to_bool success then
-        let user = Js.Unsafe.get result (Js.string "user") in
-        Deferred.return (Ok user)
+        (* With redirect-based auth, the page will redirect, so we return a pending state *)
+        (* The actual authentication will be handled by the redirect result check on page load *)
+        (* Check if there's a pending flag *)
+        let pending = try Js.to_bool (Js.Unsafe.get result (Js.string "pending")) with _ -> false in
+        if pending then
+          (* Redirect in progress *)
+          Deferred.return (Error "Redirect in progress")
+        else
+          (* Should not happen with redirect, but handle it *)
+          let user = Js.Unsafe.get result (Js.string "user") in
+          Deferred.return (Ok user)
       else
         let error = Js.to_string (Js.Unsafe.get result (Js.string "error")) in
         Deferred.return (Error error)
