@@ -95,19 +95,30 @@
         };
         
         window.setFirebaseAuthCallback = function(callback) {
-            const { onAuthStateChanged, getRedirectResult } = auth;
-            // Check for redirect result first (for Google sign-in)
-            getRedirectResult(auth).then((result) => {
-                if (result && result.user) {
-                    // Redirect sign-in successful, auth state will be updated
-                    callback(result.user);
-                }
+            // Import getRedirectResult properly
+            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ getRedirectResult, onAuthStateChanged }) => {
+                // Check for redirect result first (for Google sign-in)
+                // This is async, so we don't wait for it - the auth state listener will handle it
+                getRedirectResult(auth).then((result) => {
+                    if (result && result.user) {
+                        // Redirect sign-in successful, auth state listener will pick it up
+                        console.log('Google redirect sign-in successful');
+                    }
+                }).catch((error) => {
+                    // Ignore redirect errors - user might not have used redirect
+                    console.log('No redirect result (this is normal if not using Google sign-in):', error.message);
+                });
+                // Set up auth state listener - this will fire for both regular and redirect sign-ins
+                onAuthStateChanged(auth, (user) => {
+                    callback(user);
+                });
             }).catch((error) => {
-                console.log('Redirect result error:', error);
-            });
-            // Set up auth state listener
-            return onAuthStateChanged(auth, (user) => {
-                callback(user);
+                console.error('Error setting up auth callback:', error);
+                // Fallback: just use onAuthStateChanged without redirect check
+                const { onAuthStateChanged } = auth;
+                onAuthStateChanged(auth, (user) => {
+                    callback(user);
+                });
             });
         };
         
