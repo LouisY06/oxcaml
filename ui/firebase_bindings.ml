@@ -162,6 +162,21 @@ module Auth = struct
     else
       Deferred.return (Error "Firebase not initialized")
   
+  let sign_in_with_google () : (user, string) Result.t Deferred.t =
+    let sign_in_google_js = Js.Unsafe.global##.firebaseSignInWithGoogle in
+    if Js.Optdef.test sign_in_google_js then
+      let promise = Js.Unsafe.fun_call sign_in_google_js [||] in
+      let%bind.Deferred result = promise_to_deferred promise in
+      let success = Js.Unsafe.get result (Js.string "success") in
+      if Js.to_bool success then
+        let user = Js.Unsafe.get result (Js.string "user") in
+        Deferred.return (Ok user)
+      else
+        let error = Js.to_string (Js.Unsafe.get result (Js.string "error")) in
+        Deferred.return (Error error)
+    else
+      Deferred.return (Error "Firebase not initialized")
+  
   let sign_out () : unit Deferred.t =
     let sign_out_js = Js.Unsafe.global##.firebaseSignOut in
     if Js.Optdef.test sign_out_js then

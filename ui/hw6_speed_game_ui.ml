@@ -44,6 +44,7 @@ module Model = struct
       ; login_password : string
       ; matchmaking_status : string (* "idle" | "searching" | "matched" | "error" *)
       ; firestore_unsubscribe : (Js.Unsafe.any option [@sexp.opaque] [@compare.ignore] [@equal.ignore]) (* For cleaning up listeners *)
+      ; game_started : bool (* Whether the game has been started *)
       }
   [@@deriving sexp, compare, equal]
 
@@ -51,13 +52,14 @@ module Model = struct
       { screen = LoginScreen
       ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
       ; selected_card = None
-      ; game_message = "Welcome! Click on your card, then click on a center pile to play!"
+      ; game_message = ""
       ; auth_state = NotAuthenticated
       ; game_mode = SinglePlayer
       ; login_email = ""
       ; login_password = ""
       ; matchmaking_status = "idle"
       ; firestore_unsubscribe = None
+      ; game_started = false
       }
    ;;
 end
@@ -72,10 +74,13 @@ module Action = struct
     | Load_saved_game (* Load game from local storage *)
     | Update_login_email of string
     | Update_login_password of string
+    | Update_login_error of string
     | Sign_in
     | Sign_up
+    | Sign_in_with_google
     | Sign_out
     | Auth_state_changed of Firebase_bindings.Auth.auth_state
+    | Start_game (* Start the game - makes it active *)
     | Start_matchmaking
     | Cancel_matchmaking
     | Match_found of { match_id : string; player_id : string; opponent_id : string }
@@ -442,18 +447,25 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with login_password = password }
   
   | Sign_in ->
-      (* Fire and forget async sign in *)
-       ignore (Deferred.bind ~f:(function
-         | Ok _ -> Deferred.return () (* Auth state will update via listener *)
-         | Error msg -> let () = Stdio.printf "Sign in failed: %s\n%!" msg in Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password model.login_email model.login_password));
+      (* Sign in will be handled in state machine callback with error handling *)
       { model with login_password = ""; game_message = "Signing in..." }
   
   | Sign_up ->
-      (* Fire and forget async sign up *)
-       ignore (Deferred.bind ~f:(function
-         | Ok _ -> Deferred.return () (* Auth state will update via listener *)
-         | Error msg -> let () = Stdio.printf "Sign up failed: %s\n%!" msg in Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password model.login_email model.login_password));
+      (* Sign up will be handled in state machine callback with error handling *)
       { model with login_password = ""; game_message = "Creating account..." }
+  
+  | Sign_in_with_google ->
+      (* Google sign in will be handled in state machine callback with error handling *)
+      { model with game_message = "Signing in with Google..." }
+  
+  | Update_login_error error_msg ->
+      { model with game_message = error_msg }
+  
+  | Start_game ->
+      { model with 
+        game_started = true
+      ; game_message = "Game started! Click on your card, then click on a center pile to play!"
+      }
   
   | Sign_out ->
       (* Fire and forget async sign out *)
@@ -500,7 +512,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       ; game_mode = SinglePlayer
       ; enhanced_state = new_enhanced_state
       ; selected_card = None
-      ; game_message = "Playing against AI! Click on your card, then click on a center pile to play!"
+      ; game_started = false
+      ; game_message = "Click 'Start Game' to begin playing!"
       }
   
   | Select_multiplayer ->
@@ -556,14 +569,17 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       ; enhanced_state = new_enhanced_state
       ; selected_card = None
       ; matchmaking_status = "matched"
-      ; game_message = Printf.sprintf "Match found! Playing against %s" opponent_id
+      ; game_started = false
+      ; game_message = Printf.sprintf "Match found! Click 'Start Game' to begin playing against %s" opponent_id
       }
   
   | Game_state_synced new_state ->
       { model with enhanced_state = new_state }
   
   | Select_card card ->
-      if model.enhanced_state.base_state.game_over then
+      if not model.game_started then
+        { model with game_message = "Please start the game first!" }
+      else if model.enhanced_state.base_state.game_over then
          model
       else
         { model with 
@@ -572,7 +588,9 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
           }
    
   | Play_on_pile pile_index ->
-      if model.enhanced_state.base_state.game_over then
+      if not model.game_started then
+        { model with game_message = "Please start the game first!" }
+      else if model.enhanced_state.base_state.game_over then
          model
       else
         (match model.selected_card with
@@ -714,7 +732,7 @@ module Components = struct
    open Attr
 
    (* Helper to render a card *)
-   let card_to_html card is_selected is_player_card is_face_down ~inject =
+   let card_to_html card is_selected is_clickable is_face_down ~inject =
       let suit_symbol = match card.Hw2_speed_logic.Card.suit with
          | Hw2_speed_logic.Card.Hearts -> "♥"
          | Hw2_speed_logic.Card.Diamonds -> "♦"
@@ -748,8 +766,8 @@ module Components = struct
       Node.div
          ~attrs:
             [ Attr.create "class" (String.concat ~sep:" " classes)
-            ; (if is_player_card then on_click (fun _ -> inject (Action.Select_card card)) else Attr.empty)
-            ; Attr.create "style" ("color: " ^ suit_color ^ "; cursor: " ^ (if is_player_card then "pointer" else "default"))
+            ; (if is_clickable then on_click (fun _ -> inject (Action.Select_card card)) else Attr.empty)
+            ; Attr.create "style" ("color: " ^ suit_color ^ "; cursor: " ^ (if is_clickable then "pointer" else "default"))
             ]
          [ Node.text (if is_face_down then "?" else rank_str ^ suit_symbol) ]
 
@@ -801,7 +819,18 @@ module Components = struct
                       ]
                     [ Node.text "Sign Up" ]
                 ]
-            ; (if not (String.is_empty model.game_message) && String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." then
+            ; Node.div
+                ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
+                [ Node.text "or" ]
+            ; Node.button
+                ~attrs:
+                  [ on_click (fun _ -> inject Action.Sign_in_with_google)
+                  ; Attr.create "style" "width: 100%; padding: 12px; cursor: pointer; background: white; color: #333; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px;"
+                  ]
+                [ Node.span ~attrs:[ Attr.create "style" "font-size: 20px;" ] [ Node.text "G" ]
+                ; Node.text "Sign in with Google"
+                ]
+            ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." || String.equal model.game_message "Signing in with Google...") then
                 Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
               else if not (String.is_empty model.game_message) then
                 Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; text-align: center; color: #c62828;" ] [ Node.text model.game_message ]
@@ -886,7 +915,7 @@ module Components = struct
             (List.map model.enhanced_state.base_state.player1_hand ~f:(fun card ->
                  card_to_html card
                     (Option.equal Card.equal model.selected_card (Some card))
-                    true false ~inject))
+                    model.game_started false ~inject))
       in
 
       (* AI hand (face down) *)
@@ -899,7 +928,7 @@ module Components = struct
 
       (* Center piles *)
       let pile_html pile_id pile_index pile_card_opt =
-         let can_play = Option.is_some model.selected_card && not model.enhanced_state.base_state.game_over in
+         let can_play = model.game_started && Option.is_some model.selected_card && not model.enhanced_state.base_state.game_over in
          Node.div
             ~attrs:
                [ Attr.create "class" ("pile" ^ (if can_play then " pile-active" else ""))
@@ -967,11 +996,18 @@ module Components = struct
                    [ Node.text model.game_message ]
               ; Node.div
                    ~attrs:[ Attr.create "class" "game-controls" ]
-                   [ Node.button 
-                        ~attrs:[ on_click (fun _ -> inject Action.New_game)
-                               ; Attr.create "style" "padding: 10px 20px; border: 2px solid black; cursor: pointer; border-radius: 5px; font-size: 16px; background: white;"
-                               ] 
-                        [ Node.text "New Game" ]
+                   [ (if not model.game_started then
+                       Node.button 
+                         ~attrs:[ on_click (fun _ -> inject Action.Start_game)
+                                ; Attr.create "style" "padding: 15px 30px; border: none; cursor: pointer; border-radius: 5px; font-size: 18px; background: #4CAF50; color: white; font-weight: bold; margin-right: 10px;"
+                                ] 
+                         [ Node.text "Start Game" ]
+                     else
+                       Node.button 
+                         ~attrs:[ on_click (fun _ -> inject Action.New_game)
+                                ; Attr.create "style" "padding: 10px 20px; border: 2px solid black; cursor: pointer; border-radius: 5px; font-size: 16px; background: white;"
+                                ] 
+                         [ Node.text "New Game" ])
                    ]
               ]
          ; Node.div
@@ -1054,28 +1090,55 @@ let app =
          | None -> Model.initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
         let new_model = apply_action action _model in
-        (* Set up Firestore listener when entering multiplayer mode *)
-        (match action, new_model.game_mode with
-         | Match_found { match_id; player_id; _ }, OnlineMultiplayer _ ->
-           (match setup_firestore_listener match_id player_id inject with
-            | Some unsubscribe ->
-              { new_model with firestore_unsubscribe = Some unsubscribe }
-            | None -> new_model)
-         | Start_matchmaking, _ ->
-           (* Re-inject start_matchmaking with proper inject function *)
-           (match new_model.auth_state with
-            | Model.Authenticated { uid; _ } ->
-              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
-              new_model
-            | _ -> new_model)
-         | Select_multiplayer, _ ->
-           (* Start matchmaking when multiplayer is selected *)
-           (match new_model.auth_state with
-            | Model.Authenticated { uid; _ } ->
-              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
-              new_model
-            | _ -> new_model)
-         | _ -> new_model))
+        (* Handle async auth operations and errors *)
+        (match action with
+         | Sign_in ->
+           (* Handle sign in errors *)
+           ignore (Deferred.bind ~f:(function
+             | Ok _ -> Deferred.return ()
+             | Error msg -> 
+               ignore (inject (Action.Update_login_error msg));
+               Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password));
+           new_model
+         | Sign_up ->
+           (* Handle sign up errors *)
+           ignore (Deferred.bind ~f:(function
+             | Ok _ -> Deferred.return ()
+             | Error msg -> 
+               ignore (inject (Action.Update_login_error msg));
+               Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
+           new_model
+         | Sign_in_with_google ->
+           (* Handle Google sign in errors *)
+           ignore (Deferred.bind ~f:(function
+             | Ok _ -> Deferred.return ()
+             | Error msg -> 
+               ignore (inject (Action.Update_login_error msg));
+               Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_google ()));
+           new_model
+         | _ -> 
+           (* Set up Firestore listener when entering multiplayer mode *)
+           (match action, new_model.game_mode with
+            | Match_found { match_id; player_id; _ }, OnlineMultiplayer _ ->
+              (match setup_firestore_listener match_id player_id inject with
+               | Some unsubscribe ->
+                 { new_model with firestore_unsubscribe = Some unsubscribe }
+               | None -> new_model)
+            | Start_matchmaking, _ ->
+              (* Re-inject start_matchmaking with proper inject function *)
+              (match new_model.auth_state with
+               | Model.Authenticated { uid; _ } ->
+                 ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+                 new_model
+               | _ -> new_model)
+            | Select_multiplayer, _ ->
+              (* Start matchmaking when multiplayer is selected *)
+              (match new_model.auth_state with
+               | Model.Authenticated { uid; _ } ->
+                 ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+                 new_model
+               | _ -> new_model)
+            | _ -> new_model)))
   in
   
   (* Set up Firebase auth state listener - use a ref to ensure it only runs once *)
