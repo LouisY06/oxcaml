@@ -86,6 +86,13 @@ self.addEventListener('activate', (event) => {
 // We use the Cache API to serve cached responses when offline,
 // and cache new responses when online.
 self.addEventListener('fetch', (event) => {
+  // Skip chrome-extension and other non-http(s) schemes
+  const url = new URL(event.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    // Don't try to cache chrome-extension://, file://, etc.
+    return;
+  }
+  
   // event.respondWith() allows us to provide a custom response
   event.respondWith(
     // caches.match() checks if the request is in the cache
@@ -111,7 +118,16 @@ self.addEventListener('fetch', (event) => {
           // This happens asynchronously, so we return the original response immediately
           caches.open(CACHE_NAME).then((cache) => {
             // cache.put() stores the request/response pair in the cache
-            cache.put(event.request, responseToCache);
+            // Wrap in try-catch to handle unsupported schemes gracefully
+            try {
+              cache.put(event.request, responseToCache).catch((err) => {
+                // Silently ignore cache errors (e.g., for chrome-extension URLs)
+                console.log('Cache put failed (non-critical):', err.message);
+              });
+            } catch (err) {
+              // Silently ignore cache errors
+              console.log('Cache put error (non-critical):', err.message);
+            }
           });
           
           return response;
