@@ -5,6 +5,151 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Speed Card Game</title>
     <link rel="stylesheet" href="hw5_html_css/hw5_speed_game.css">
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAXQmr5lp1EWizPZO727vH0SptNeGOWSSQ",
+            authDomain: "ocml-e03d8.firebaseapp.com",
+            projectId: "ocml-e03d8",
+            storageBucket: "ocml-e03d8.firebasestorage.app",
+            messagingSenderId: "1046269959504",
+            appId: "1:1046269959504:web:ce2802f92f482c0f572055"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        // Make Firebase available globally for OCaml bindings
+        window.firebaseApp = app;
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        
+        // ============================================================
+        // FIREBASE AUTH WRAPPER FUNCTIONS FOR OCAML
+        // ============================================================
+        window.firebaseSignIn = async function(email, password) {
+            try {
+                const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                return { success: true, user: userCredential.user };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.firebaseCreateUser = async function(email, password) {
+            try {
+                const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                return { success: true, user: userCredential.user };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.firebaseSignOut = async function() {
+            try {
+                const { signOut } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                await signOut(auth);
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.setFirebaseAuthCallback = function(callback) {
+            const { onAuthStateChanged } = auth;
+            return onAuthStateChanged(auth, (user) => {
+                callback(user);
+            });
+        };
+        
+        // ============================================================
+        // FIRESTORE WRAPPER FUNCTIONS FOR OCAML
+        // ============================================================
+        window.firebaseSetDoc = async function(collectionPath, docId, data) {
+            try {
+                const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const docRef = doc(db, collectionPath, docId);
+                await setDoc(docRef, data);
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.firebaseGetDoc = async function(collectionPath, docId) {
+            try {
+                const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const docRef = doc(db, collectionPath, docId);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    return { success: true, data: docSnap.data() };
+                } else {
+                    return { success: true, data: null };
+                }
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.firebaseOnSnapshot = async function(collectionPath, docId, callback) {
+            try {
+                const { doc, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const docRef = doc(db, collectionPath, docId);
+                return onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        callback(docSnap.data());
+                    } else {
+                        callback(null);
+                    }
+                });
+            } catch (error) {
+                console.error('Firebase onSnapshot error:', error);
+                return null;
+            }
+        };
+        
+        window.firebaseQueryCollection = async function(collectionPath, field, op, value) {
+            try {
+                const { collection, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const collRef = collection(db, collectionPath);
+                let q = query(collRef);
+                if (field && op && value !== undefined) {
+                    q = query(collRef, where(field, op, value));
+                }
+                const querySnapshot = await getDocs(q);
+                const docs = [];
+                querySnapshot.forEach((doc) => {
+                    docs.push({ id: doc.id, data: doc.data() });
+                });
+                return { success: true, docs: docs };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        window.firebaseDeleteDoc = async function(collectionPath, docId) {
+            try {
+                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+                const docRef = doc(db, collectionPath, docId);
+                await deleteDoc(docRef);
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        };
+        
+        console.log('Firebase initialized');
+    </script>
     <style>
         body {
             font-family: Arial, sans-serif;

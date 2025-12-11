@@ -1,5 +1,6 @@
 open! Core
 open! Base
+open! Async
 open Speed_logic_library
 open! Bonsai
 open! Bonsai.Let_syntax
@@ -9,19 +10,46 @@ open Js_of_ocaml
 (* HW6: Speed Card Game UI using Bonsai *)
 (* Simultaneous play - both players can play at any time! *)
 (* Offline support with Service Worker and Local Storage *)
+(* Online multiplayer support with Firebase Auth and Firestore *)
+
+module Firebase_bindings = Firebase_bindings
 
 module Model = struct
+   type game_mode =
+     | SinglePlayer
+     | OnlineMultiplayer of { match_id : string; player_id : string; opponent_id : string }
+   [@@deriving sexp, compare, equal]
+   
+   type auth_state =
+     | NotAuthenticated
+     | Authenticated of { uid : string; email : string option; display_name : string option }
+   [@@deriving sexp, compare, equal]
+   
    type t =
       { enhanced_state : Hw2_speed_logic.Enhanced_game_state.t
       ; selected_card : Hw2_speed_logic.Card.t option
       ; game_message : string
-  }
+      ; auth_state : auth_state
+      ; game_mode : game_mode
+      ; login_email : string
+      ; login_password : string
+      ; show_login : bool
+      ; matchmaking_status : string (* "idle" | "searching" | "matched" | "error" *)
+      ; firestore_unsubscribe : (Js.Unsafe.any option [@sexp.opaque] [@compare.ignore] [@equal.ignore]) (* For cleaning up listeners *)
+      }
   [@@deriving sexp, compare, equal]
 
    let initial =
       { enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
       ; selected_card = None
       ; game_message = "Welcome! Click on your card, then click on a center pile to play!"
+      ; auth_state = NotAuthenticated
+      ; game_mode = SinglePlayer
+      ; login_email = ""
+      ; login_password = ""
+      ; show_login = true
+      ; matchmaking_status = "idle"
+      ; firestore_unsubscribe = None
       }
    ;;
 end
@@ -34,6 +62,16 @@ module Action = struct
     | AI_move_continuous (* AI plays continuously *)
     | Trigger_periodic_update (* Periodic game update *)
     | Load_saved_game (* Load game from local storage *)
+    | Update_login_email of string
+    | Update_login_password of string
+    | Sign_in
+    | Sign_up
+    | Sign_out
+    | Auth_state_changed of Firebase_bindings.Auth.auth_state
+    | Start_matchmaking
+    | Cancel_matchmaking
+    | Match_found of { match_id : string; player_id : string; opponent_id : string }
+    | Game_state_synced of Hw2_speed_logic.Enhanced_game_state.t (* From Firestore *)
   [@@deriving sexp, compare]
 end
 
@@ -240,16 +278,144 @@ let check_and_refresh_if_stuck (enhanced_state : Hw2_speed_logic.Enhanced_game_s
     (enhanced_state, "")
 ;;
 
+(* Helper functions for Firestore operations - defined before apply_action *)
+let sync_game_state_to_firestore (match_id : string) (player_id : string) (state : Hw2_speed_logic.Enhanced_game_state.t) : unit Deferred.t =
+  (* Serialize game state to S-expression string *)
+  let sexp = Hw2_speed_logic.Enhanced_game_state.sexp_of_t state in
+  let state_str = Sexp.to_string sexp in
+  let data = [
+    ("gameState", Firebase_bindings.Firestore.string_to_js state_str)
+  ; ("lastUpdatedBy", Firebase_bindings.Firestore.string_to_js player_id)
+  ; ("timestamp", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+  ] in
+  Firebase_bindings.Firestore.set_doc "matches" match_id data
+
+let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
+  let open Deferred.Let_syntax in
+  (* Create a matchmaking request in Firestore *)
+  let matchmaking_id = Printf.sprintf "mm_%s_%d" uid (Int.of_float (Unix.time ())) in
+  let data = [
+    ("playerId", Firebase_bindings.Firestore.string_to_js uid)
+  ; ("status", Firebase_bindings.Firestore.string_to_js "waiting")
+  ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+  ] in
+  let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" matchmaking_id data in
+  (* Query for other waiting players *)
+  let%bind waiting_players_result = 
+    Firebase_bindings.Firestore.query_collection 
+      "matchmaking" 
+      "status" 
+      "==" 
+      (Firebase_bindings.Firestore.string_to_js "waiting")
+  in
+  match waiting_players_result with
+  | Ok docs ->
+    (* Find a player that's not us *)
+    let opponent_opt = 
+      List.find_map docs ~f:(fun doc ->
+        try
+          let doc_id = Js.to_string (Js.Unsafe.get doc (Js.string "id")) in
+          let doc_data = Js.Unsafe.get doc (Js.string "data") in
+          if Js.Optdef.test doc_data then
+            let player_id = Js.to_string (Js.Unsafe.get doc_data (Js.string "playerId")) in
+            (* Not our own matchmaking request and not already matched *)
+            if not (String.equal player_id uid) && not (String.equal doc_id matchmaking_id) then
+              Some doc
+            else
+              None
+          else
+            None
+        with _ -> None
+      )
+    in
+    (match opponent_opt with
+     | Some opponent_doc ->
+       (* Found an opponent! Create a match *)
+       let opponent_data = Js.Unsafe.get opponent_doc (Js.string "data") in
+       let opponent_id = Js.to_string (Js.Unsafe.get opponent_data (Js.string "playerId")) in
+       let opponent_matchmaking_id = Js.to_string (Js.Unsafe.get opponent_doc (Js.string "id")) in
+       (* Create match document *)
+       let match_id = Printf.sprintf "match_%s_%s" uid opponent_id in
+       let match_data = [
+         ("player1", Firebase_bindings.Firestore.string_to_js uid)
+       ; ("player2", Firebase_bindings.Firestore.string_to_js opponent_id)
+       ; ("status", Firebase_bindings.Firestore.string_to_js "active")
+       ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+       ] in
+       let%bind _ = Firebase_bindings.Firestore.set_doc "matches" match_id match_data in
+       (* Update both matchmaking documents to "matched" *)
+       let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" matchmaking_id [
+         ("status", Firebase_bindings.Firestore.string_to_js "matched")
+       ; ("matchId", Firebase_bindings.Firestore.string_to_js match_id)
+       ] in
+       let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" opponent_matchmaking_id [
+         ("status", Firebase_bindings.Firestore.string_to_js "matched")
+       ; ("matchId", Firebase_bindings.Firestore.string_to_js match_id)
+       ] in
+       (* Trigger match found action - fire and forget *)
+       ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
+       Deferred.return ()
+     | None ->
+       (* No opponent found yet - set up listener to watch for matches *)
+       (* Set up listener on our own matchmaking document *)
+       ignore (Firebase_bindings.Firestore.on_snapshot "matchmaking" matchmaking_id (fun data_opt ->
+         match data_opt with
+         | None -> ()
+         | Some data ->
+           let status = Js.to_string (Js.Unsafe.get data (Js.string "status")) in
+           if String.equal status "matched" then
+             let match_id = Js.to_string (Js.Unsafe.get data (Js.string "matchId")) in
+             (* Get match document to find opponent *)
+             ignore (Deferred.bind ~f:(function
+               | Ok (Some match_data) ->
+                 let player1 = Js.to_string (Js.Unsafe.get match_data (Js.string "player1")) in
+                 let player2 = Js.to_string (Js.Unsafe.get match_data (Js.string "player2")) in
+                 let opponent_id = if String.equal player1 uid then player2 else player1 in
+                 ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
+                 Deferred.return ()
+               | _ -> Deferred.return ()) (Firebase_bindings.Firestore.get_doc "matches" match_id))
+       ));
+       Deferred.return ())
+  | Error err ->
+    let () = Stdio.printf "Matchmaking query failed: %s\n%!" err in
+    Deferred.return ()
+
+let setup_firestore_listener (match_id : string) (player_id : string) (inject : Action.t -> unit Effect.t) : Js.Unsafe.any option =
+  (* Set up real-time listener for game state changes *)
+  match Firebase_bindings.Firestore.on_snapshot "matches" match_id (fun data_opt ->
+    match data_opt with
+    | None -> () (* Document doesn't exist *)
+    | Some data ->
+      let game_state_str = Js.to_string (Js.Unsafe.get data (Js.string "gameState")) in
+      let last_updated = Js.to_string (Js.Unsafe.get data (Js.string "lastUpdatedBy")) in
+      (* Only update if change came from opponent *)
+      if not (String.equal last_updated player_id) then
+        try
+          let sexp = Parsexp.Single.parse_string_exn game_state_str in
+          let new_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
+          (* Trigger action to update game state *)
+          ignore (inject (Action.Game_state_synced new_state))
+        with _ -> ())
+  with
+  | Some unsubscribe -> Some unsubscribe
+  | None -> None
+
 let apply_action (action : Action.t) (model : Model.t) : Model.t =
-  let new_model = match action with
+  match action with
   | New_game ->
       let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
-      let new_model : Model.t = { enhanced_state = new_enhanced_state
+      let new_model = { model with
+        enhanced_state = new_enhanced_state
       ; selected_card = None
       ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
       } in
       LocalStorage.clear (); (* Clear saved game when starting new *)
-      new_model
+      (* In multiplayer mode, sync to Firestore (async, fire and forget) *)
+      (match model.game_mode with
+       | OnlineMultiplayer { match_id; player_id; _ } ->
+          ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
+         new_model
+       | SinglePlayer -> new_model)
   
   | Load_saved_game ->
       (match LocalStorage.load () with
@@ -257,6 +423,85 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          { saved_model with game_message = "Game restored from local storage!" }
        | None -> 
          { model with game_message = "No saved game found." })
+  
+  | Update_login_email email ->
+      { model with login_email = email }
+  
+  | Update_login_password password ->
+      { model with login_password = password }
+  
+  | Sign_in ->
+      (* Fire and forget async sign in *)
+       ignore (Deferred.bind ~f:(function
+         | Ok _ -> Deferred.return () (* Auth state will update via listener *)
+         | Error msg -> let () = Stdio.printf "Sign in failed: %s\n%!" msg in Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password model.login_email model.login_password));
+      { model with login_password = ""; game_message = "Signing in..." }
+  
+  | Sign_up ->
+      (* Fire and forget async sign up *)
+       ignore (Deferred.bind ~f:(function
+         | Ok _ -> Deferred.return () (* Auth state will update via listener *)
+         | Error msg -> let () = Stdio.printf "Sign up failed: %s\n%!" msg in Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password model.login_email model.login_password));
+      { model with login_password = ""; game_message = "Creating account..." }
+  
+  | Sign_out ->
+      (* Fire and forget async sign out *)
+      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (Firebase_bindings.Auth.sign_out ()));
+      (* Clean up Firestore listeners *)
+      (match model.firestore_unsubscribe with
+       | Some unsubscribe ->
+         (try
+           let unsubscribe_fn = Js.Unsafe.get unsubscribe (Js.string "unsubscribe") in
+           ignore (Js.Unsafe.fun_call unsubscribe_fn [||])
+         with _ -> ())
+       | None -> ());
+      { model with
+        auth_state = Model.NotAuthenticated
+      ; game_mode = SinglePlayer
+      ; show_login = true
+      ; matchmaking_status = "idle"
+      ; firestore_unsubscribe = None
+      ; game_message = "Signed out successfully."
+      }
+  
+  | Auth_state_changed auth_state ->
+      let new_auth_state = match auth_state with
+        | Firebase_bindings.Auth.SignedOut -> Model.NotAuthenticated
+        | Firebase_bindings.Auth.SignedIn { uid; email; display_name } ->
+          Model.Authenticated { uid; email; display_name }
+      in
+      { model with
+        auth_state = new_auth_state
+      ; show_login = (match new_auth_state with Model.NotAuthenticated -> true | _ -> false)
+      }
+  
+  | Start_matchmaking ->
+      (match model.auth_state with
+       | Model.NotAuthenticated ->
+         { model with game_message = "Please sign in first to play online!" }
+       | Model.Authenticated { uid; _ } ->
+         (* Start matchmaking process - this will be handled via Effect *)
+          ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid (fun _action -> Effect.return ())));
+         { model with matchmaking_status = "searching"; game_message = "Searching for opponent..." })
+  
+  | Cancel_matchmaking ->
+      { model with matchmaking_status = "idle"; game_message = "Matchmaking cancelled." }
+  
+  | Match_found { match_id; player_id; opponent_id } ->
+      let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
+      (* Note: Firestore listener setup needs inject function, which we don't have here *)
+      (* This will be set up separately when the match is found *)
+       ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
+      { model with
+        game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+      ; enhanced_state = new_enhanced_state
+      ; selected_card = None
+      ; matchmaking_status = "matched"
+      ; game_message = Printf.sprintf "Match found! Playing against %s" opponent_id
+      }
+  
+  | Game_state_synced new_state ->
+      { model with enhanced_state = new_state }
   
   | Select_card card ->
       if model.enhanced_state.base_state.game_over then
@@ -271,14 +516,17 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       if model.enhanced_state.base_state.game_over then
          model
       else
-         (match model.selected_card with
-          | None -> 
-             { model with game_message = "Select a card from your hand first!" }
-  | Some card -> 
-             let player_id = "Player1" in
-             let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
-               (match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
-              | Ok new_enhanced_state ->
+        (match model.selected_card with
+         | None -> 
+            { model with game_message = "Select a card from your hand first!" }
+         | Some card -> 
+            let player_id = match model.game_mode with
+              | SinglePlayer -> "Player1"
+              | OnlineMultiplayer { player_id; _ } -> player_id
+            in
+            let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
+            match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
+            | Ok new_enhanced_state ->
                  let () = Stdio.printf "After play - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
                    (List.length new_enhanced_state.base_state.player1_hand)
                    (List.length new_enhanced_state.base_state.player1_stock)
@@ -296,98 +544,109 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                  (* Check if stuck *)
                  let state_after_stuck_check, stuck_msg = check_and_refresh_if_stuck state_after_draw in
                  
-                 (* AI plays continuously via Clock.every - don't play AI moves here! *)
+                 (* In multiplayer mode, sync to Firestore *)
+                 let updated_model = { model with
+                   enhanced_state = state_after_stuck_check
+                 ; selected_card = None
+                 ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
+                 } in
+                 
                  if state_after_stuck_check.base_state.game_over then
-                   (match state_after_stuck_check.base_state.winner with
-                    | Some Hw2_speed_logic.Player.Player1 -> 
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "YOU WIN! All cards played! Click 'New Game' to play again."
-                       }
-                    | Some Hw2_speed_logic.Player.Player2 ->
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "AI WINS! AI played all cards first. Click 'New Game' to try again."
-                       }
-                    | None ->
-                       { enhanced_state = state_after_stuck_check
-                       ; selected_card = None
-                       ; game_message = "Game Over! Click 'New Game' to play again."
-                       })
+                   let win_msg = match state_after_stuck_check.base_state.winner with
+                     | Some Hw2_speed_logic.Player.Player1 -> "YOU WIN! All cards played! Click 'New Game' to play again."
+                     | Some Hw2_speed_logic.Player.Player2 ->
+                       (match model.game_mode with
+                        | SinglePlayer -> "AI WINS! AI played all cards first. Click 'New Game' to try again."
+                        | OnlineMultiplayer { opponent_id; _ } -> Printf.sprintf "%s WINS! Click 'New Game' to play again." opponent_id)
+                     | None -> "Game Over! Click 'New Game' to play again."
+                   in
+                   let final_model = { updated_model with game_message = win_msg } in
+                   (match model.game_mode with
+                    | OnlineMultiplayer { match_id; player_id; _ } ->
+                      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id state_after_stuck_check));
+                      final_model
+                    | SinglePlayer -> final_model)
                  else
-                   { enhanced_state = state_after_stuck_check
-                   ; selected_card = None
-                   ; game_message = if String.is_empty stuck_msg then "Good play! Keep going!" else stuck_msg
-                   }
-              | Error msg ->
-                 { model with 
-                   game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
-                 }))
+                   (match model.game_mode with
+                    | OnlineMultiplayer { match_id; player_id; _ } ->
+                      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id state_after_stuck_check));
+                      updated_model
+                    | SinglePlayer -> updated_model)
+            | Error msg ->
+               { model with 
+                 game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
+               })
    
   | AI_move_continuous | Trigger_periodic_update ->
-      if model.enhanced_state.base_state.game_over then
-         model
-      else
-         (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
-         let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
-         
-         (* Let AI try to play multiple cards in a burst *)
-         let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
-           if max_moves <= 0 || enh_state.base_state.game_over then
-             enh_state
-           else
-             match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
-             | Some ai_move ->
-                (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
-                 | Ok new_state ->
-                    let state_with_draw = auto_draw_until_full new_state "Player2" in
-                    let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
-                    ai_play_all state_after_stuck (max_moves - 1)
-                 | Error _ -> enh_state)
-             | None -> enh_state
-         in
-         
-         let final_state = ai_play_all state_with_draws 1 in
-         let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
-           (List.length final_state.base_state.player1_hand)
-           (List.length final_state.base_state.player1_stock)
-           (List.length final_state.base_state.player2_hand)
-           (List.length final_state.base_state.player2_stock)
-           final_state.base_state.game_over in
-         
-         if final_state.base_state.game_over then
-           (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
-             (match final_state.base_state.winner with
-              | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
-              | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
-              | None -> "None") in
-            match final_state.base_state.winner with
-            | Some Hw2_speed_logic.Player.Player1 -> 
-              { enhanced_state = final_state
-              ; selected_card = None
-              ; game_message = "YOU WIN! All cards played!"
-              }
-            | Some Hw2_speed_logic.Player.Player2 ->
-              { enhanced_state = final_state
-              ; selected_card = None
-              ; game_message = "AI WINS! AI was too fast!"
-              }
-            | None ->
-               { enhanced_state = final_state
-               ; selected_card = None
-               ; game_message = "Game Over!"
-               })
+      (* Only run AI in single player mode *)
+      (match model.game_mode with
+       | OnlineMultiplayer _ -> model (* Opponent plays via Firestore sync *)
+       | SinglePlayer ->
+         if model.enhanced_state.base_state.game_over then
+           model
          else
-           { enhanced_state = final_state
-           ; selected_card = model.selected_card
-           ; game_message = model.game_message
-           }
-  in
-  (* Auto-save after every action (except Load_saved_game to avoid recursion) *)
-  (match action with
-   | Load_saved_game -> () (* Don't save when loading *)
-   | _ -> LocalStorage.save new_model);
-  new_model
+           (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
+           let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
+           
+           (* Let AI try to play multiple cards in a burst *)
+           let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
+             if max_moves <= 0 || enh_state.base_state.game_over then
+               enh_state
+             else
+               match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
+               | Some ai_move ->
+                  (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
+                   | Ok new_state ->
+                      let state_with_draw = auto_draw_until_full new_state "Player2" in
+                      let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
+                      ai_play_all state_after_stuck (max_moves - 1)
+                   | Error _ -> enh_state)
+               | None -> enh_state
+           in
+           
+           let final_state = ai_play_all state_with_draws 1 in
+           let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+             (List.length final_state.base_state.player1_hand)
+             (List.length final_state.base_state.player1_stock)
+             (List.length final_state.base_state.player2_hand)
+             (List.length final_state.base_state.player2_stock)
+             final_state.base_state.game_over in
+           
+           let updated_model = if final_state.base_state.game_over then
+             (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
+               (match final_state.base_state.winner with
+                | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
+                | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
+                | None -> "None") in
+              match final_state.base_state.winner with
+              | Some Hw2_speed_logic.Player.Player1 -> 
+                { model with
+                  enhanced_state = final_state
+                ; selected_card = None
+                ; game_message = "YOU WIN! All cards played!"
+                }
+              | Some Hw2_speed_logic.Player.Player2 ->
+                { model with
+                  enhanced_state = final_state
+                ; selected_card = None
+                ; game_message = "AI WINS! AI was too fast!"
+                }
+              | None ->
+                 { model with
+                   enhanced_state = final_state
+                 ; selected_card = None
+                 ; game_message = "Game Over!"
+                 })
+           else
+             { model with
+               enhanced_state = final_state
+             ; selected_card = model.selected_card
+             ; game_message = model.game_message
+             }
+           in
+           (* Auto-save after AI move *)
+           LocalStorage.save updated_model;
+           updated_model)
 ;;
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
@@ -438,6 +697,109 @@ module Components = struct
    let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Hw2_speed_logic in
       let open Vdom in
+
+      (* Login form *)
+      let login_form_html =
+        if model.show_login then
+          Node.div
+            ~attrs:[ Attr.create "class" "login-form"; Attr.create "style" "padding: 20px; border: 2px solid #ddd; border-radius: 10px; margin-bottom: 20px; background: #f9f9f9;" ]
+            [ Node.h2 [ Node.text "Sign In / Sign Up" ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
+                [ Node.label [ Node.text "Email: " ]
+                ; Node.input
+                    ~attrs:
+                      [ Attr.create "type" "email"
+                      ; Attr.create "value" model.login_email
+                      ; Attr.create "style" "padding: 5px; margin-left: 10px; width: 200px;"
+                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
+                      ]
+                    ()
+                ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
+                [ Node.label [ Node.text "Password: " ]
+                ; Node.input
+                    ~attrs:
+                      [ Attr.create "type" "password"
+                      ; Attr.create "value" model.login_password
+                      ; Attr.create "style" "padding: 5px; margin-left: 10px; width: 200px;"
+                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
+                      ]
+                    ()
+                ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
+                [ Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Sign_in)
+                      ; Attr.create "style" "padding: 10px 20px; margin-right: 10px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px;"
+                      ]
+                    [ Node.text "Sign In" ]
+                ; Node.button
+                    ~attrs:
+                      [ on_click (fun _ -> inject Action.Sign_up)
+                      ; Attr.create "style" "padding: 10px 20px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px;"
+                      ]
+                    [ Node.text "Sign Up" ]
+                ]
+            ]
+        else
+          Node.div
+            ~attrs:[ Attr.create "class" "user-info"; Attr.create "style" "padding: 10px; background: #e8f5e9; border-radius: 5px; margin-bottom: 10px;" ]
+            [ Node.span
+                ~attrs:[ Attr.create "style" "margin-right: 20px;" ]
+                [ Node.text
+                    (match model.auth_state with
+                     | Model.NotAuthenticated -> "Not signed in"
+                     | Model.Authenticated { email; display_name = _; _ } ->
+                       Printf.sprintf "Signed in as: %s" (Option.value email ~default:"User"))
+                ]
+            ; Node.button
+                ~attrs:
+                  [ on_click (fun _ -> inject Action.Sign_out)
+                  ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                  ]
+                [ Node.text "Sign Out" ]
+            ]
+      in
+
+      (* Matchmaking controls *)
+      let matchmaking_html =
+        match model.auth_state with
+        | Model.NotAuthenticated -> Node.div []
+        | Model.Authenticated _ ->
+          Node.div
+            ~attrs:[ Attr.create "class" "matchmaking"; Attr.create "style" "padding: 10px; background: #fff3e0; border-radius: 5px; margin-bottom: 10px;" ]
+            [ Node.div
+                ~attrs:[ Attr.create "style" "margin-bottom: 10px;" ]
+                [ Node.text
+                    (match model.game_mode with
+                     | SinglePlayer -> "Playing against AI"
+                     | OnlineMultiplayer { opponent_id; _ } -> Printf.sprintf "Playing against: %s" opponent_id)
+                ]
+            ; (match model.matchmaking_status with
+               | "searching" ->
+                 Node.div
+                   ~attrs:[ Attr.create "style" "margin: 10px 0;" ]
+                   [ Node.text "Searching for opponent... "
+                   ; Node.button
+                       ~attrs:
+                         [ on_click (fun _ -> inject Action.Cancel_matchmaking)
+                         ; Attr.create "style" "padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                         ]
+                       [ Node.text "Cancel" ]
+                   ]
+               | "matched" -> Node.div []
+               | _ ->
+                 Node.button
+                   ~attrs:
+                     [ on_click (fun _ -> inject Action.Start_matchmaking)
+                     ; Attr.create "style" "padding: 10px 20px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 5px;"
+                     ]
+                   [ Node.text "Find Online Opponent" ])
+            ]
+      in
 
       (* Player hand *)
       let player_hand_html =
@@ -497,7 +859,9 @@ module Components = struct
 
       Node.div
          ~attrs:[ Attr.create "class" "game-container" ]
-         [ Node.div
+         [ login_form_html
+         ; matchmaking_html
+         ; Node.div
               ~attrs:[ Attr.create "class" "game-header" ]
               [ Node.h1 [ Node.text "Speed Card Game" ]
               ; Node.div ~attrs:[ Attr.create "class" "game-status"; Attr.create "id" "gameStatus" ]
@@ -569,22 +933,41 @@ module Components = struct
 end
 
 (* ================================= *)
-(* 🚀 FIXED Bonsai App Initialization *)
+(* FIXED Bonsai App Initialization *)
 (* ================================= *)
 let app =
   let%sub model, inject =
     Bonsai.state_machine0
       (module Model)
       (module Action)
+
+(**************************************************)
       ~default_model:
         (* Try to load from local storage on startup, fallback to initial *)
         (match LocalStorage.load () with
          | Some saved_model -> 
            { saved_model with game_message = "Welcome back! Your game has been restored." }
          | None -> Model.initial)
-      ~apply_action:(fun ~inject:_ ~schedule_event:_ _model action -> apply_action action _model)
+      ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
+        let new_model = apply_action action _model in
+        (* Set up Firestore listener when entering multiplayer mode *)
+        (match action, new_model.game_mode with
+         | Match_found { match_id; player_id; _ }, OnlineMultiplayer _ ->
+           (match setup_firestore_listener match_id player_id inject with
+            | Some unsubscribe ->
+              { new_model with firestore_unsubscribe = Some unsubscribe }
+            | None -> new_model)
+         | Start_matchmaking, _ ->
+           (* Re-inject start_matchmaking with proper inject function *)
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+              new_model
+            | _ -> new_model)
+         | _ -> new_model))
   in
-
+  
+(**************************************************)
   (* Periodic AI update every 2000ms (2 seconds) - AI plays 1 card every 2 seconds *)
   let%sub () =
     Bonsai.Clock.every
@@ -597,6 +980,14 @@ let app =
 
   let%arr model = model
   and inject = inject in
+  (* Set up auth callback once when inject is available *)
+  let () =
+    let callback auth_state =
+      (* Inject auth state change action *)
+      ignore (inject (Action.Auth_state_changed auth_state))
+    in
+    Firebase_bindings.Auth.on_auth_state_changed callback
+  in
   let inject_action action = inject action in
   Components.view model inject_action
 ;;

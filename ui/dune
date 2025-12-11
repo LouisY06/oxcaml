@@ -1,6 +1,7 @@
 (executables
  (modes js)
  (names hw6_speed_game_app)
- (libraries bonsai bonsai.web core speed_logic_library js_of_ocaml)
+ (libraries bonsai bonsai.web core speed_logic_library js_of_ocaml async async_js)
+ (modules hw6_speed_game_app hw6_speed_game_ui firebase_bindings)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai js_of_ocaml-ppx)))
