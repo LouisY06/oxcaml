@@ -1254,11 +1254,9 @@ let app =
 
 (**************************************************)
       ~default_model:
-        (* Try to load from local storage on startup, fallback to initial *)
-        (match LocalStorage.load () with
-         | Some saved_model -> 
-           { saved_model with game_message = "Welcome back! Your game has been restored." }
-         | None -> Model.initial)
+        (* Always start with initial model - login screen first *)
+        (* Don't restore saved games automatically - user must sign in first *)
+        Model.initial
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
         let new_model = apply_action action _model in
         (* Handle async auth operations and errors *)
@@ -1343,12 +1341,16 @@ let app =
       try
         let callback auth_state =
           (* Inject auth state change action *)
+          let () = Stdio.printf "Injecting Auth_state_changed action\n%!" in
           ignore (inject (Action.Auth_state_changed auth_state))
         in
+        let () = Stdio.printf "Setting up Firebase auth callback\n%!" in
         Firebase_bindings.Auth.on_auth_state_changed callback;
         auth_callback_setup := true
       with
-      | _ -> () (* Firebase not ready yet, will retry on next render *)
+      | e -> 
+        let () = Stdio.printf "Error setting up auth callback: %s\n%!" (Exn.to_string e) in
+        () (* Firebase not ready yet, will retry on next render *)
   in
   let inject_action action = inject action in
   Components.view model inject_action
