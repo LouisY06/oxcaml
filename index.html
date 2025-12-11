@@ -95,10 +95,17 @@
         };
         
         window.setFirebaseAuthCallback = function(callback) {
-            // Import getRedirectResult properly
-            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ getRedirectResult, onAuthStateChanged }) => {
-                // Check for redirect result first (for Google sign-in)
-                // This is async, so we don't wait for it - the auth state listener will handle it
+            // Use the auth instance's onAuthStateChanged method directly
+            // This is available on the auth instance, not from the module
+            const { onAuthStateChanged } = auth;
+            
+            // Set up auth state listener first (this is synchronous and won't block)
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                callback(user);
+            });
+            
+            // Check for redirect result asynchronously (don't block on this)
+            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ getRedirectResult }) => {
                 getRedirectResult(auth).then((result) => {
                     if (result && result.user) {
                         // Redirect sign-in successful, auth state listener will pick it up
@@ -106,20 +113,15 @@
                     }
                 }).catch((error) => {
                     // Ignore redirect errors - user might not have used redirect
-                    console.log('No redirect result (this is normal if not using Google sign-in):', error.message);
-                });
-                // Set up auth state listener - this will fire for both regular and redirect sign-ins
-                onAuthStateChanged(auth, (user) => {
-                    callback(user);
+                    // This is normal if not using Google sign-in
                 });
             }).catch((error) => {
-                console.error('Error setting up auth callback:', error);
-                // Fallback: just use onAuthStateChanged without redirect check
-                const { onAuthStateChanged } = auth;
-                onAuthStateChanged(auth, (user) => {
-                    callback(user);
-                });
+                // Ignore import errors - redirect check is optional
+                console.log('Could not check redirect result (non-critical):', error.message);
             });
+            
+            // Return unsubscribe function
+            return unsubscribe;
         };
         
         // ============================================================
