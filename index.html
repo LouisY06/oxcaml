@@ -95,17 +95,14 @@
         };
         
         window.setFirebaseAuthCallback = function(callback) {
-            // Use the auth instance's onAuthStateChanged method directly
-            // This is available on the auth instance, not from the module
-            const { onAuthStateChanged } = auth;
-            
-            // Set up auth state listener first (this is synchronous and won't block)
-            const unsubscribe = onAuthStateChanged(auth, (user) => {
-                callback(user);
-            });
-            
-            // Check for redirect result asynchronously (don't block on this)
-            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ getRedirectResult }) => {
+            // Import onAuthStateChanged from Firebase auth module
+            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ onAuthStateChanged, getRedirectResult }) => {
+                // Set up auth state listener
+                const unsubscribe = onAuthStateChanged(auth, (user) => {
+                    callback(user);
+                });
+                
+                // Check for redirect result (for Google sign-in)
                 getRedirectResult(auth).then((result) => {
                     if (result && result.user) {
                         // Redirect sign-in successful, auth state listener will pick it up
@@ -116,12 +113,9 @@
                     // This is normal if not using Google sign-in
                 });
             }).catch((error) => {
-                // Ignore import errors - redirect check is optional
-                console.log('Could not check redirect result (non-critical):', error.message);
+                console.error('Error setting up auth callback:', error);
+                // If import fails, the app should still work, just without auth
             });
-            
-            // Return unsubscribe function
-            return unsubscribe;
         };
         
         // ============================================================
