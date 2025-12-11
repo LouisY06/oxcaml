@@ -1062,6 +1062,14 @@ module Components = struct
    let view (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Hw2_speed_logic in
       let open Vdom in
+      
+      (* Debug logging *)
+      let () = match model.screen with
+        | Model.LoginScreen -> Stdio.printf "RENDERING LOGIN SCREEN\n%!"
+        | Model.ProfileScreen -> Stdio.printf "RENDERING PROFILE SCREEN\n%!"
+        | Model.ModeSelectionScreen -> Stdio.printf "RENDERING MODE SELECTION SCREEN\n%!"
+        | Model.GameScreen -> Stdio.printf "RENDERING GAME SCREEN\n%!"
+      in
 
       (* Route to appropriate screen *)
       match model.screen with
@@ -1247,16 +1255,23 @@ end
 (* FIXED Bonsai App Initialization *)
 (* ================================= *)
 let app =
+  let () = Stdio.printf "INITIALIZING APP - Starting with LoginScreen\n%!" in
   let%sub model, inject =
     Bonsai.state_machine0
       (module Model)
       (module Action)
-
-(**************************************************)
       ~default_model:
         (* Always start with initial model - login screen first *)
         (* Don't restore saved games automatically - user must sign in first *)
-        Model.initial
+        (let initial = Model.initial in
+         let () = Stdio.printf "Model.initial created: screen=%s\n%!" 
+           (match initial.screen with
+            | Model.LoginScreen -> "LoginScreen"
+            | Model.ProfileScreen -> "ProfileScreen"
+            | Model.ModeSelectionScreen -> "ModeSelectionScreen"
+            | Model.GameScreen -> "GameScreen")
+         in
+         initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
         let new_model = apply_action action _model in
         (* Handle async auth operations and errors *)
