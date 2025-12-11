@@ -12,7 +12,9 @@
 
 // Cache version - increment this to force cache updates
 // When changed, old caches are deleted and new ones are created
-const CACHE_NAME = 'speed-game-v2';
+const CACHE_NAME = 'speed-game-v3';
+const SW_VERSION = 'v3-2024-12-11-fixed-chrome-extension';
+console.log('Service Worker loaded:', SW_VERSION);
 
 // List of files to cache for offline access
 // These are the essential files needed to run the game offline
@@ -31,6 +33,7 @@ const urlsToCache = [
 // or when a new version is detected. We use the Cache API to
 // store all necessary files for offline access.
 self.addEventListener('install', (event) => {
+  console.log('Service Worker installing:', SW_VERSION);
   // event.waitUntil() ensures the service worker doesn't install
   // until the caching is complete
   event.waitUntil(
@@ -38,7 +41,7 @@ self.addEventListener('install', (event) => {
     // Returns a Promise that resolves to the Cache object
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('Service Worker: Caching files');
+        console.log('Service Worker: Caching files (version:', SW_VERSION, ')');
         // cache.addAll() fetches all URLs and adds them to the cache
         // This is an atomic operation - if any file fails, all fail
         return cache.addAll(urlsToCache);
@@ -87,9 +90,15 @@ self.addEventListener('activate', (event) => {
 // and cache new responses when online.
 self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http(s) schemes
-  const url = new URL(event.request.url);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    // Don't try to cache chrome-extension://, file://, etc.
+  try {
+    const url = new URL(event.request.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      // Don't try to cache chrome-extension://, file://, etc.
+      // Just let the browser handle it normally
+      return;
+    }
+  } catch (e) {
+    // If URL parsing fails, skip this request
     return;
   }
   

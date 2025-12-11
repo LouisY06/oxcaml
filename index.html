@@ -250,6 +250,11 @@
 
     <!-- Include the compiled Bonsai JavaScript -->
     <script>
+        const APP_VERSION = 'v3-2024-12-11-fixed';
+        console.log('========================================');
+        console.log('APP VERSION:', APP_VERSION);
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('========================================');
         console.log('About to load OCaml app...');
         // Stub out threading functions to prevent errors (js_of_ocaml doesn't support threads)
         if (typeof jsoo_runtime !== 'undefined' && jsoo_runtime) {
