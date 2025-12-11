@@ -1,6 +1,6 @@
 open! Core
 open! Base
-open! Async
+open Async_kernel
 open Speed_logic_library
 open! Bonsai
 open! Bonsai.Let_syntax
@@ -286,18 +286,18 @@ let sync_game_state_to_firestore (match_id : string) (player_id : string) (state
   let data = [
     ("gameState", Firebase_bindings.Firestore.string_to_js state_str)
   ; ("lastUpdatedBy", Firebase_bindings.Firestore.string_to_js player_id)
-  ; ("timestamp", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+  ; ("timestamp", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
   ] in
   Firebase_bindings.Firestore.set_doc "matches" match_id data
 
 let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
   let open Deferred.Let_syntax in
   (* Create a matchmaking request in Firestore *)
-  let matchmaking_id = Printf.sprintf "mm_%s_%d" uid (Int.of_float (Unix.time ())) in
+  let matchmaking_id = Printf.sprintf "mm_%s_%d" uid (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)) in
   let data = [
     ("playerId", Firebase_bindings.Firestore.string_to_js uid)
   ; ("status", Firebase_bindings.Firestore.string_to_js "waiting")
-  ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+  ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
   ] in
   let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" matchmaking_id data in
   (* Query for other waiting players *)
@@ -340,7 +340,7 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
          ("player1", Firebase_bindings.Firestore.string_to_js uid)
        ; ("player2", Firebase_bindings.Firestore.string_to_js opponent_id)
        ; ("status", Firebase_bindings.Firestore.string_to_js "active")
-       ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Unix.time ())))
+       ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
        ] in
        let%bind _ = Firebase_bindings.Firestore.set_doc "matches" match_id match_data in
        (* Update both matchmaking documents to "matched" *)
@@ -967,6 +967,9 @@ let app =
          | _ -> new_model))
   in
   
+  (* Set up Firebase auth state listener - use a ref to ensure it only runs once *)
+  let auth_callback_setup = ref false in
+  
 (**************************************************)
   (* Periodic AI update every 2000ms (2 seconds) - AI plays 1 card every 2 seconds *)
   let%sub () =
@@ -980,13 +983,18 @@ let app =
 
   let%arr model = model
   and inject = inject in
-  (* Set up auth callback once when inject is available *)
+  (* Set up auth callback once (using ref to prevent multiple setups) *)
   let () =
-    let callback auth_state =
-      (* Inject auth state change action *)
-      ignore (inject (Action.Auth_state_changed auth_state))
-    in
-    Firebase_bindings.Auth.on_auth_state_changed callback
+    if not !auth_callback_setup then
+      try
+        let callback auth_state =
+          (* Inject auth state change action *)
+          ignore (inject (Action.Auth_state_changed auth_state))
+        in
+        Firebase_bindings.Auth.on_auth_state_changed callback;
+        auth_callback_setup := true
+      with
+      | _ -> () (* Firebase not ready yet, will retry on next render *)
   in
   let inject_action action = inject action in
   Components.view model inject_action

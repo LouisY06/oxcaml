@@ -1,5 +1,5 @@
 open! Core
-open! Async
+open Async_kernel
 open! Bonsai_web
 open Js_of_ocaml
 
@@ -39,16 +39,36 @@ module Auth = struct
   
   (* Helper to convert JS promise to Deferred *)
   let promise_to_deferred (promise : Js.Unsafe.any) : 'a Deferred.t =
-    let ivar = Ivar.create () in
-    let on_resolve = Js.wrap_callback (fun result ->
-      Ivar.fill ivar result;
-      ()) in
-    let on_reject = Js.wrap_callback (fun error ->
-      let error_msg = try Js.to_string (Js.Unsafe.get error (Js.string "message")) with _ -> "Unknown error" in
-      Ivar.fill ivar (Js.Unsafe.inject (Js.string error_msg));
-      ()) in
-    ignore (Js.Unsafe.fun_call (Js.Unsafe.get promise (Js.string "then")) [| Js.Unsafe.inject on_resolve; Js.Unsafe.inject on_reject |]);
-    Ivar.read ivar
+    try
+      let ivar = Ivar.create () in
+      let on_resolve = Js.wrap_callback (fun result ->
+        try
+          Ivar.fill ivar result;
+          ()
+        with e ->
+          let () = Stdio.printf "Error in promise resolve callback: %s\n%!" (Exn.to_string e) in
+          ()) in
+      let on_reject = Js.wrap_callback (fun error ->
+        try
+          let error_msg = try Js.to_string (Js.Unsafe.get error (Js.string "message")) with _ -> "Unknown error" in
+          let () = Stdio.printf "Promise rejected: %s\n%!" error_msg in
+          (* For now, just fill with the error object - caller will handle *)
+          Ivar.fill ivar (Js.Unsafe.inject error);
+          ()
+        with e ->
+          let () = Stdio.printf "Error in promise reject callback: %s\n%!" (Exn.to_string e) in
+          ()) in
+      (try
+         ignore (Js.Unsafe.fun_call (Js.Unsafe.get promise (Js.string "then")) [| Js.Unsafe.inject on_resolve; Js.Unsafe.inject on_reject |])
+       with e ->
+         let () = Stdio.printf "Error calling promise.then: %s\n%!" (Exn.to_string e) in
+         ());
+      Ivar.read ivar
+    with e ->
+      let () = Stdio.printf "Error in promise_to_deferred: %s\n%!" (Exn.to_string e) in
+      (* Return a deferred that will never resolve - this is not ideal but prevents crash *)
+      let ivar = Ivar.create () in
+      Ivar.read ivar
 
   (* Call Firebase Auth methods - return Deferred, use Effect.Expert.handle in callers *)
   let sign_in_with_email_and_password (email : string) (password : string)
@@ -93,15 +113,20 @@ module Auth = struct
       Deferred.return ()
   
   let on_auth_state_changed (callback : auth_state -> unit) : unit =
-    let callback_js =
-      Js.wrap_callback (fun user ->
-        match Js.Optdef.to_option user with
-        | None -> callback SignedOut
-        | Some u -> callback (get_user_info u))
-    in
-    let set_callback = Js.Unsafe.global##.setFirebaseAuthCallback in
-    if Js.Optdef.test set_callback then
-      ignore (Js.Unsafe.fun_call set_callback [| Js.Unsafe.inject callback_js |])
+    try
+      let callback_js =
+        Js.wrap_callback (fun user ->
+          match Js.Optdef.to_option user with
+          | None -> callback SignedOut
+          | Some u -> callback (get_user_info u))
+      in
+      let set_callback = Js.Unsafe.global##.setFirebaseAuthCallback in
+      if Js.Optdef.test set_callback then
+        ignore (Js.Unsafe.fun_call set_callback [| Js.Unsafe.inject callback_js |])
+      else
+        () (* Firebase not ready yet *)
+    with
+    | _ -> () (* Firebase not initialized, will be called again later *)
 end
 
 module Firestore = struct

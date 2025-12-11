@@ -149,6 +149,9 @@
         };
         
         console.log('Firebase initialized');
+        // Signal that Firebase is ready
+        window.firebaseReady = true;
+        window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
         body {
@@ -208,8 +211,25 @@
     </div>
 
     <!-- Include the compiled Bonsai JavaScript -->
-    <script src="hw6_speed_game_app.bc.js"></script>
     <script>
+        console.log('About to load OCaml app...');
+        window.addEventListener('error', (e) => {
+            console.error('JavaScript error:', e.error, e.message, e.filename, e.lineno);
+        });
+    </script>
+    <script src="hw6_speed_game_app.bc.js" onerror="console.error('Failed to load hw6_speed_game_app.bc.js')" onload="console.log('hw6_speed_game_app.bc.js loaded successfully')"></script>
+    <script>
+        console.log('OCaml app script tag executed');
+        // Wait a bit then check if app initialized
+        setTimeout(() => {
+            const appEl = document.getElementById('app');
+            if (appEl && appEl.innerHTML.includes('Loading HW6 Speed Game UI')) {
+                console.error('App failed to initialize - still showing loading message');
+                console.error('Check browser console for JavaScript errors');
+            } else {
+                console.log('App appears to have initialized successfully');
+            }
+        }, 2000);
         // ============================================================
         // SERVICE WORKER REGISTRATION
         // ============================================================
