@@ -24,6 +24,8 @@ end
 
 module Deferred = Deferred_impl
 
+(* Simplified Ivar - we don't actually need it for promise_to_deferred anymore *)
+(* But keep it for potential future use *)
 module Ivar = struct
   type 'a t = {
     mutable resolve_fn : ('a -> unit) option;
@@ -31,33 +33,30 @@ module Ivar = struct
   }
   
   let create () : 'a t =
-    let resolve_ref = ref None in
-    (* Create executor - this is called immediately when Promise is constructed *)
-    (* We need to use a named function to avoid "Function statements require a function name" error *)
-    let executor = 
-      let named_executor resolve _reject =
-        (* Store the resolve function so we can call it later from fill *)
-        resolve_ref := Some (fun x -> 
-          try
-            ignore (Js.Unsafe.fun_call resolve [| Js.Unsafe.inject x |])
-          with e ->
-            let () = Stdio.printf "Error calling resolve: %s\n%!" (Exn.to_string e) in
-            ())
-      in
-      Js.wrap_callback named_executor
-    in
-    (* Create Promise using new Promise(executor) syntax *)
+    (* Create a unique ID for this promise *)
+    let promise_id = Printf.sprintf "ivar_%f" (Js.Unsafe.global##.Date##now ()) in
+    let resolve_key = Js.string (promise_id ^ "_resolve") in
+    (* Create executor using eval to create a named function *)
+    let executor_code = Printf.sprintf "(function(resolve, reject) { window.%s_resolve = resolve; })" promise_id in
+    let executor = Js.Unsafe.eval_string executor_code in
+    (* Create Promise *)
     let promise_constructor = Js.Unsafe.get Js.Unsafe.global##.Promise (Js.string "constructor") in
     let promise = Js.Unsafe.new_obj promise_constructor [| Js.Unsafe.inject executor |] in
-    (* resolve_ref should be set now since executor was called synchronously *)
-    { resolve_fn = !resolve_ref; promise }
+    (* Store resolve function *)
+    let resolve_fn = fun x ->
+      try
+        let resolve = Js.Unsafe.get Js.Unsafe.global resolve_key in
+        ignore (Js.Unsafe.fun_call resolve [| Js.Unsafe.inject x |])
+      with e ->
+        let () = Stdio.printf "Error in Ivar.fill resolve: %s\n%!" (Exn.to_string e) in
+        ()
+    in
+    { resolve_fn = Some resolve_fn; promise }
   
   let fill (ivar : 'a t) (x : 'a) : unit =
     match ivar.resolve_fn with
     | Some resolve -> resolve x
-    | None -> 
-      (* Promise executor hasn't been called yet - this shouldn't happen but handle gracefully *)
-      ()
+    | None -> ()
   
   let read (ivar : 'a t) : 'a Deferred.t = ivar.promise
 end
@@ -97,37 +96,10 @@ module Auth = struct
     SignedIn { uid; email = email_opt; display_name = display_name_opt }
   
   (* Helper to convert JS promise to Deferred *)
+  (* Since Deferred.t is just a JavaScript Promise, we can chain it directly *)
   let promise_to_deferred (promise : Js.Unsafe.any) : 'a Deferred.t =
-    try
-      let ivar = Ivar.create () in
-      let on_resolve = Js.wrap_callback (fun result ->
-        try
-          Ivar.fill ivar result;
-          ()
-        with e ->
-          let () = Stdio.printf "Error in promise resolve callback: %s\n%!" (Exn.to_string e) in
-          ()) in
-      let on_reject = Js.wrap_callback (fun error ->
-        try
-          let error_msg = try Js.to_string (Js.Unsafe.get error (Js.string "message")) with _ -> "Unknown error" in
-          let () = Stdio.printf "Promise rejected: %s\n%!" error_msg in
-          (* For now, just fill with the error object - caller will handle *)
-          Ivar.fill ivar (Js.Unsafe.inject error);
-          ()
-        with e ->
-          let () = Stdio.printf "Error in promise reject callback: %s\n%!" (Exn.to_string e) in
-          ()) in
-      (try
-         ignore (Js.Unsafe.fun_call (Js.Unsafe.get promise (Js.string "then")) [| Js.Unsafe.inject on_resolve; Js.Unsafe.inject on_reject |])
-       with e ->
-         let () = Stdio.printf "Error calling promise.then: %s\n%!" (Exn.to_string e) in
-         ());
-      Ivar.read ivar
-    with e ->
-      let () = Stdio.printf "Error in promise_to_deferred: %s\n%!" (Exn.to_string e) in
-      (* Return a deferred that will never resolve - this is not ideal but prevents crash *)
-      let ivar = Ivar.create () in
-      Ivar.read ivar
+    (* Just return the promise - it's already a Deferred.t *)
+    promise
 
   (* Call Firebase Auth methods - return Deferred, use Effect.Expert.handle in callers *)
   let sign_in_with_email_and_password (email : string) (password : string)
@@ -217,16 +189,8 @@ module Firestore = struct
   
   (* Helper to convert JS promise to Deferred - same as Auth module *)
   let promise_to_deferred (promise : Js.Unsafe.any) : 'a Deferred.t =
-    let ivar = Ivar.create () in
-    let on_resolve = Js.wrap_callback (fun result ->
-      Ivar.fill ivar result;
-      ()) in
-    let on_reject = Js.wrap_callback (fun error ->
-      let error_msg = try Js.to_string (Js.Unsafe.get error (Js.string "message")) with _ -> "Unknown error" in
-      Ivar.fill ivar (Js.Unsafe.inject (Js.string error_msg));
-      ()) in
-    ignore (Js.Unsafe.fun_call (Js.Unsafe.get promise (Js.string "then")) [| Js.Unsafe.inject on_resolve; Js.Unsafe.inject on_reject |]);
-    Ivar.read ivar
+    (* Just return the promise directly - it's already a Deferred.t *)
+    promise
 
   (* Set document data - simplified wrapper *)
   let set_doc (collection_path : string) (doc_id : string) (data : (string * Js.Unsafe.any) list) : unit Deferred.t =
