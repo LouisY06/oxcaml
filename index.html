@@ -108,18 +108,21 @@
                 
                 // Check for redirect result FIRST (for Google sign-in)
                 // This must be done before setting up onAuthStateChanged to avoid timing issues
+                console.log('Checking for redirect result...');
                 getRedirectResult(auth).then((result) => {
+                    console.log('getRedirectResult completed, result:', result);
                     if (result && result.user) {
-                        console.log('Google redirect sign-in successful, calling callback with user');
+                        console.log('Google redirect sign-in successful, calling callback with user:', result.user.email);
                         // Explicitly call the callback with the signed-in user
                         // This ensures the callback fires even if onAuthStateChanged already fired
                         callback(result.user);
+                    } else {
+                        console.log('No redirect result - user probably didnt use Google sign-in');
                     }
                 }).catch((error) => {
+                    console.log('Redirect result error:', error.code, error.message);
                     // Ignore redirect errors - normal if not using Google sign-in
-                    if (error.code !== 'auth/popup-closed-by-user') {
-                        console.log('Redirect result error (expected if no redirect):', error.code);
-                    }
+                    // Don't log if it's just "no redirect" which is expected
                 });
                 
                 // Set up auth state listener - this fires immediately with current user if signed in
