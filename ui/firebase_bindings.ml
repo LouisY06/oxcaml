@@ -110,18 +110,29 @@ module Auth = struct
   (* Call Firebase Auth methods - return Deferred, use Effect.Expert.handle in callers *)
   let sign_in_with_email_and_password (email : string) (password : string)
       : (user, string) Result.t Deferred.t =
+    let () = Stdio.printf "*** OCAML: sign_in_with_email_and_password called with email=%s ***\n%!" email in
     let sign_in_js = Js.Unsafe.global##.firebaseSignIn in
     if Js.Optdef.test sign_in_js then
+      let () = Stdio.printf "*** OCAML: Calling JavaScript firebaseSignIn function ***\n%!" in
       let promise = Js.Unsafe.fun_call sign_in_js [| Js.Unsafe.inject (Js.string email); Js.Unsafe.inject (Js.string password) |] in
+      let () = Stdio.printf "*** OCAML: Promise created, binding to Deferred... ***\n%!" in
       let%bind.Deferred result = promise_to_deferred promise in
+      let () = Stdio.printf "*** OCAML: Promise resolved! result=%s ***\n%!" 
+        (try
+          let success = Js.Unsafe.get result (Js.string "success") in
+          if Js.to_bool success then "success=true" else "success=false"
+        with _ -> "error reading result") in
       let success = Js.Unsafe.get result (Js.string "success") in
       if Js.to_bool success then
         let user = Js.Unsafe.get result (Js.string "user") in
+        let () = Stdio.printf "*** OCAML: Sign in successful, returning Ok(user) ***\n%!" in
         Deferred.return (Ok user)
       else
         let error = Js.to_string (Js.Unsafe.get result (Js.string "error")) in
+        let () = Stdio.printf "*** OCAML: Sign in failed, error=%s ***\n%!" error in
         Deferred.return (Error error)
     else
+      let () = Stdio.printf "*** OCAML: Firebase not initialized! ***\n%!" in
       Deferred.return (Error "Firebase not initialized")
   
   let create_user_with_email_and_password (email : string) (password : string)
