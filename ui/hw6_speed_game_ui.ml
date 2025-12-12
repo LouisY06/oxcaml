@@ -568,10 +568,10 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          ; screen = LoginScreen
          }
        | Model.Authenticated _ ->
-         let () = Stdio.printf "Setting screen to GameScreen after login\n%!" in
+         let () = Stdio.printf "Setting screen to ModeSelectionScreen after login\n%!" in
          { model with
            auth_state = new_auth_state
-         ; screen = GameScreen
+         ; screen = ModeSelectionScreen
          })
   
   | Load_player_stats ->
