@@ -105,6 +105,23 @@
             // Import onAuthStateChanged from Firebase auth module
             import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ onAuthStateChanged, getRedirectResult }) => {
                 console.log('Firebase auth module imported, setting up listener');
+                
+                // Check for redirect result FIRST (for Google sign-in)
+                // This must be done before setting up onAuthStateChanged to avoid timing issues
+                getRedirectResult(auth).then((result) => {
+                    if (result && result.user) {
+                        console.log('Google redirect sign-in successful, calling callback with user');
+                        // Explicitly call the callback with the signed-in user
+                        // This ensures the callback fires even if onAuthStateChanged already fired
+                        callback(result.user);
+                    }
+                }).catch((error) => {
+                    // Ignore redirect errors - normal if not using Google sign-in
+                    if (error.code !== 'auth/popup-closed-by-user') {
+                        console.log('Redirect result error (expected if no redirect):', error.code);
+                    }
+                });
+                
                 // Set up auth state listener - this fires immediately with current user if signed in
                 const unsubscribe = onAuthStateChanged(auth, (user) => {
                     console.log('Auth state changed, user:', user ? user.email : 'signed out');
@@ -117,17 +134,6 @@
                     } else {
                         console.log('User is signed out');
                     }
-                });
-                
-                // Check for redirect result (for Google sign-in)
-                getRedirectResult(auth).then((result) => {
-                    if (result && result.user) {
-                        // Redirect sign-in successful, auth state listener will pick it up
-                        console.log('Google redirect sign-in successful');
-                    }
-                }).catch((error) => {
-                    // Ignore redirect errors - user might not have used redirect
-                    // This is normal if not using Google sign-in
                 });
                 
                 // Return unsubscribe function (though OCaml doesn't use it)
