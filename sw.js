@@ -12,8 +12,8 @@
 
 // Cache version - increment this to force cache updates
 // When changed, old caches are deleted and new ones are created
-const CACHE_NAME = 'speed-game-v3';
-const SW_VERSION = 'v3-2024-12-11-fixed-chrome-extension';
+const CACHE_NAME = 'speed-game-v4-FORCE-CLEAR-' + Date.now();
+const SW_VERSION = 'v4-FORCE-CLEAR-' + Date.now();
 console.log('Service Worker loaded:', SW_VERSION);
 
 // List of files to cache for offline access
