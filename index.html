@@ -108,7 +108,15 @@
                 // Set up auth state listener - this fires immediately with current user if signed in
                 const unsubscribe = onAuthStateChanged(auth, (user) => {
                     console.log('Auth state changed, user:', user ? user.email : 'signed out');
+                    console.log('Calling auth callback with user:', user ? 'authenticated' : 'null');
+                    // Call the callback immediately
                     callback(user);
+                    // Also check current user to ensure state is synced
+                    if (user) {
+                        console.log('User is authenticated, email:', user.email, 'uid:', user.uid);
+                    } else {
+                        console.log('User is signed out');
+                    }
                 });
                 
                 // Check for redirect result (for Google sign-in)

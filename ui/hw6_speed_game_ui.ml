@@ -510,12 +510,20 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with login_password = password }
   
   | Sign_in ->
-      (* Sign in will be handled in state machine callback with error handling *)
-      { model with login_password = ""; game_message = "Signing in..." }
+      (* Validate email and password before attempting sign in *)
+      if String.is_empty model.login_email || String.is_empty model.login_password then
+        { model with game_message = "Please enter both email and password." }
+      else
+        (* Sign in will be handled in state machine callback with error handling *)
+        { model with login_password = ""; game_message = "Signing in..." }
   
   | Sign_up ->
-      (* Sign up will be handled in state machine callback with error handling *)
-      { model with login_password = ""; game_message = "Creating account..." }
+      (* Validate email and password before attempting sign up *)
+      if String.is_empty model.login_email || String.is_empty model.login_password then
+        { model with game_message = "Please enter both email and password." }
+      else
+        (* Sign up will be handled in state machine callback with error handling *)
+        { model with login_password = ""; game_message = "Creating account..." }
   
   | Sign_in_with_google ->
       (* Google sign in will be handled in state machine callback with error handling *)
@@ -1276,31 +1284,39 @@ let app =
         (* Handle async auth operations and errors *)
         (match action with
          | Sign_in ->
-           (* Handle sign in errors *)
-           let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
-           ignore (Deferred.bind ~f:(function
-             | Ok _user -> 
-               let () = Stdio.printf "Sign in successful! User authenticated.\n%!" in
-               (* Auth state change will be detected by onAuthStateChanged callback *)
-               Deferred.return ()
-             | Error msg -> 
-               let () = Stdio.printf "Sign in failed: %s\n%!" msg in
-               ignore (inject (Action.Update_login_error msg));
-               Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password));
-           new_model
+           (* Only attempt sign-in if email and password are not empty *)
+           if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
+             new_model (* Already handled validation in apply_action, just return model *)
+           else
+             (* Handle sign in errors *)
+             let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
+             ignore (Deferred.bind ~f:(function
+               | Ok _user -> 
+                 let () = Stdio.printf "Sign in successful! User authenticated. Waiting for auth state callback...\n%!" in
+                 (* Auth state change will be detected by onAuthStateChanged callback *)
+                 Deferred.return ()
+               | Error msg -> 
+                 let () = Stdio.printf "Sign in failed: %s\n%!" msg in
+                 ignore (inject (Action.Update_login_error msg));
+                 Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password));
+             new_model
          | Sign_up ->
-           (* Handle sign up errors *)
-           let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
-           ignore (Deferred.bind ~f:(function
-             | Ok _user -> 
-               let () = Stdio.printf "Sign up successful! User created and authenticated.\n%!" in
-               (* Auth state change will be detected by onAuthStateChanged callback *)
-               Deferred.return ()
-             | Error msg -> 
-               let () = Stdio.printf "Sign up failed: %s\n%!" msg in
-               ignore (inject (Action.Update_login_error msg));
-               Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
-           new_model
+           (* Only attempt sign-up if email and password are not empty *)
+           if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
+             new_model (* Already handled validation in apply_action, just return model *)
+           else
+             (* Handle sign up errors *)
+             let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
+             ignore (Deferred.bind ~f:(function
+               | Ok _user -> 
+                 let () = Stdio.printf "Sign up successful! User created and authenticated. Waiting for auth state callback...\n%!" in
+                 (* Auth state change will be detected by onAuthStateChanged callback *)
+                 Deferred.return ()
+               | Error msg -> 
+                 let () = Stdio.printf "Sign up failed: %s\n%!" msg in
+                 ignore (inject (Action.Update_login_error msg));
+                 Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
+             new_model
          | Sign_in_with_google ->
            (* Handle Google sign in - uses redirect, so page will navigate away *)
            ignore (Deferred.bind ~f:(function

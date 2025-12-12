@@ -177,9 +177,16 @@ module Auth = struct
              | Some u -> 
                let email = try Js.to_string (Js.Unsafe.get u (Js.string "email")) with _ -> "no email" in
                Printf.sprintf "Some (%s)" email) in
-          match Js.Optdef.to_option user with
-          | None -> callback SignedOut
-          | Some u -> callback (get_user_info u))
+          let auth_state = match Js.Optdef.to_option user with
+          | None -> SignedOut
+          | Some u -> get_user_info u
+          in
+          let () = Stdio.printf "Calling OCaml callback with auth_state: %s\n%!" 
+            (match auth_state with
+             | SignedOut -> "SignedOut"
+             | SignedIn { email; _ } -> Printf.sprintf "SignedIn (%s)" (Option.value email ~default:"no email"))
+          in
+          callback auth_state)
       in
       let set_callback = Js.Unsafe.global##.setFirebaseAuthCallback in
       if Js.Optdef.test set_callback then
