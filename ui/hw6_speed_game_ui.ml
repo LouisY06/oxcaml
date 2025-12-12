@@ -1305,25 +1305,29 @@ let app =
          in
          initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
+        let action_str = match action with
+          | Action.Sign_in -> "Sign_in"
+          | Action.Sign_up -> "Sign_up"
+          | Action.Sign_in_with_google -> "Sign_in_with_google"
+          | Action.Auth_state_changed auth_state -> 
+            (match auth_state with
+             | Firebase_bindings.Auth.SignedOut -> "Auth_state_changed(SignedOut)"
+             | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+               Printf.sprintf "Auth_state_changed(SignedIn: %s)" (Option.value email ~default:"no email"))
+          | _ -> "Other"
+        in
+        let screen_str = match _model.screen with
+          | LoginScreen -> "LoginScreen"
+          | ProfileScreen -> "ProfileScreen"
+          | ModeSelectionScreen -> "ModeSelectionScreen"
+          | GameScreen -> "GameScreen"
+        in
+        let auth_str = match _model.auth_state with
+          | NotAuthenticated -> "NotAuthenticated"
+          | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email")
+        in
         let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s, current auth_state: %s ***\n%!"
-          (match action with
-           | Action.Sign_in -> "Sign_in"
-           | Action.Sign_up -> "Sign_up"
-           | Action.Sign_in_with_google -> "Sign_in_with_google"
-           | Action.Auth_state_changed auth_state -> 
-             (match auth_state with
-              | Firebase_bindings.Auth.SignedOut -> "Auth_state_changed(SignedOut)"
-              | Firebase_bindings.Auth.SignedIn { email; _ } -> 
-                Printf.sprintf "Auth_state_changed(SignedIn: %s)" (Option.value email ~default:"no email"))
-           | _ -> "Other")
-          (match _model.screen with
-           | LoginScreen -> "LoginScreen"
-           | ProfileScreen -> "ProfileScreen"
-           | ModeSelectionScreen -> "ModeSelectionScreen"
-           | GameScreen -> "GameScreen")
-          (match _model.auth_state with
-           | NotAuthenticated -> "NotAuthenticated"
-           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
+          action_str screen_str auth_str
           (match _model.screen with
            | LoginScreen -> "LoginScreen"
            | ProfileScreen -> "ProfileScreen"
