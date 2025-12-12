@@ -113,7 +113,8 @@ module Action = struct
     | Create_lobby (* Create a new lobby with a code *)
     | Join_lobby (* Join a lobby by entering a code *)
     | Update_lobby_code of string (* Update the lobby code input field *)
-    | Lobby_created of string (* Lobby was created with this code *)
+    | Lobby_created of string (* Lobby was created with this code - transition to game room *)
+    | Lobby_joined of string (* Lobby was joined - transition to game room *)
     | Go_to_mode_selection (* Go back to mode selection *)
     | Go_to_profile (* Go to profile screen *)
     | Load_player_stats (* Load player stats from Firestore *)
@@ -382,7 +383,7 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
   let () = Stdio.printf "*** Creating lobby document in Firestore: lobbies/%s ***\n%!" lobby_code in
   let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code lobby_data in
   let () = Stdio.printf "*** Lobby created successfully ***\n%!" in
-  (* Update the model to show the lobby code *)
+  (* Transition to game room screen with lobby code *)
   let effect = inject (Action.Lobby_created lobby_code) in
   let setTimeout = Js.Unsafe.global##.setTimeout in
   if Js.Optdef.test setTimeout then
@@ -880,7 +881,24 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with lobby_code = code }
   
   | Lobby_created code ->
-      { model with created_lobby_code = Some code; game_message = Printf.sprintf "Lobby created! Code: %s" code }
+      (* Transition to game room screen and show lobby code *)
+      { model with 
+        screen = GameScreen
+      ; created_lobby_code = Some code
+      ; game_message = Printf.sprintf "Waiting for opponent to join... Lobby Code: %s" code
+      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = "" } (* Will be set when match found *)
+      ; game_started = false
+      }
+  
+  | Lobby_joined code ->
+      (* Transition to game room screen and show lobby code *)
+      { model with 
+        screen = GameScreen
+      ; created_lobby_code = Some code
+      ; game_message = Printf.sprintf "Joined lobby! Code: %s - Waiting for game to start..." code
+      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = "" } (* Will be set when match found *)
+      ; game_started = false
+      }
   
   | Go_to_mode_selection ->
       (* Clean up any active game/matchmaking *)
@@ -1420,6 +1438,35 @@ module Components = struct
       | Model.ModeSelectionScreen -> mode_selection_screen model inject
       | Model.GameScreen ->
       (* Game screen *)
+      (* Show lobby code if we're waiting in a lobby *)
+      let lobby_code_html =
+        match model.created_lobby_code with
+        | Some code when not model.game_started ->
+          Node.div
+            ~attrs:[ Attr.create "style" "position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 1000; text-align: center; min-width: 300px;" ]
+            [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "🎮 Lobby Code" ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 10px 0; font-family: monospace;" ]
+                [ Node.text code ]
+            ; Node.div
+                ~attrs:[ Attr.create "style" "font-size: 14px; margin-top: 10px; opacity: 0.9;" ]
+                [ Node.text "Share this code with your friend!" ]
+            ; Node.button
+                ~attrs:
+                  [ Attr.create "style" "margin-top: 15px; padding: 10px 20px; background: white; color: #4CAF50; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
+                  ; on_click (fun _ ->
+                      (* Copy code to clipboard using JavaScript *)
+                      let copy_code_js = Js.Unsafe.global##.navigator##.clipboard in
+                      if Js.Optdef.test copy_code_js then
+                        let _ = Js.Unsafe.meth_call copy_code_js "writeText" [| Js.Unsafe.inject (Js.string code) |] in
+                        inject (Action.Update_login_error "Code copied to clipboard!")
+                      else
+                        inject (Action.Update_login_error "Clipboard not available"))
+                  ]
+                [ Node.text "📋 Copy Code" ]
+            ]
+        | _ -> Node.div []
+      in
       let matchmaking_html =
         match model.game_mode with
         | SinglePlayer -> Node.div []
@@ -1509,6 +1556,7 @@ module Components = struct
                     [ Node.text "Sign Out" ]
                 ]
             | _ -> Node.div [])
+         ; lobby_code_html
          ; matchmaking_html
          ; Node.div
               ~attrs:[ Attr.create "class" "game-header" ]
@@ -1654,7 +1702,8 @@ let app =
             | Action.Create_lobby -> "Create_lobby"
             | Action.Join_lobby -> "Join_lobby"
             | Action.Update_lobby_code _ -> "Update_lobby_code"
-            | Action.Lobby_created _ -> "Lobby_created")
+            | Action.Lobby_created _ -> "Lobby_created"
+            | Action.Lobby_joined _ -> "Lobby_joined")
         in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"
