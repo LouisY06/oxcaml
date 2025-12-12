@@ -876,61 +876,67 @@ module Components = struct
             ~attrs:[ Attr.create "class" "login-form"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
             [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #333;" ] [ Node.text "Speed Card Game" ]
             ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 20px; color: #666; font-size: 18px;" ] [ Node.text "Sign In / Sign Up" ]
-            ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
-                [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
-                ; Node.input
-                    ~attrs:
-                      [ Attr.create "type" "email"
-                      ; Attr.create "value" model.login_email
-                      ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
-                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
-                      ]
-                    ()
-                ]
-            ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
-                [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Password" ]
-                ; Node.input
-                    ~attrs:
-                      [ Attr.create "type" "password"
-                      ; Attr.create "value" model.login_password
-                      ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
-                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
-                      ]
-                    ()
-                ]
-            ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 20px 0 10px 0; display: flex; gap: 10px;" ]
-                [ Node.button
-                    ~attrs:
-                      [ on_click (fun _ -> inject Action.Sign_in)
-                      ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
-                      ]
-                    [ Node.text "Sign In" ]
+            ; Node.form
+                ~attrs:[ Attr.create "style" "margin: 0;" ]
+                [ Node.div
+                    ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
+                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
+                    ; Node.input
+                        ~attrs:
+                          [ Attr.create "type" "email"
+                          ; Attr.create "value" model.login_email
+                          ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
+                          ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
+                          ]
+                        ()
+                    ]
+                ; Node.div
+                    ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
+                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Password" ]
+                    ; Node.input
+                        ~attrs:
+                          [ Attr.create "type" "password"
+                          ; Attr.create "value" model.login_password
+                          ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
+                          ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
+                          ]
+                        ()
+                    ]
+                ; Node.div
+                    ~attrs:[ Attr.create "style" "margin: 20px 0 10px 0; display: flex; gap: 10px;" ]
+                    [ Node.button
+                        ~attrs:
+                          [ Attr.create "type" "button"
+                          ; on_click (fun _ -> inject Action.Sign_in)
+                          ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
+                          ]
+                        [ Node.text "Sign In" ]
+                    ; Node.button
+                        ~attrs:
+                          [ Attr.create "type" "button"
+                          ; on_click (fun _ -> inject Action.Sign_up)
+                          ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
+                          ]
+                        [ Node.text "Sign Up" ]
+                    ]
+                ; Node.div
+                    ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
+                    [ Node.text "or" ]
                 ; Node.button
                     ~attrs:
-                      [ on_click (fun _ -> inject Action.Sign_up)
-                      ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
+                      [ Attr.create "type" "button"
+                      ; on_click (fun _ -> inject Action.Sign_in_with_google)
+                      ; Attr.create "style" "width: 100%; padding: 12px; cursor: pointer; background: white; color: #333; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px;"
                       ]
-                    [ Node.text "Sign Up" ]
+                    [ Node.span ~attrs:[ Attr.create "style" "font-size: 20px;" ] [ Node.text "G" ]
+                    ; Node.text "Sign in with Google"
+                    ]
+                ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." || String.equal model.game_message "Signing in with Google...") then
+                    Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
+                  else if not (String.is_empty model.game_message) then
+                    Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; text-align: center; color: #c62828;" ] [ Node.text model.game_message ]
+                  else Node.div [])
                 ]
-            ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
-                [ Node.text "or" ]
-            ; Node.button
-                ~attrs:
-                  [ on_click (fun _ -> inject Action.Sign_in_with_google)
-                  ; Attr.create "style" "width: 100%; padding: 12px; cursor: pointer; background: white; color: #333; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px;"
-                  ]
-                [ Node.span ~attrs:[ Attr.create "style" "font-size: 20px;" ] [ Node.text "G" ]
-                ; Node.text "Sign in with Google"
-                ]
-            ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." || String.equal model.game_message "Signing in with Google...") then
-                Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
-              else if not (String.is_empty model.game_message) then
-                Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; text-align: center; color: #c62828;" ] [ Node.text model.game_message ]
-              else Node.div [])
             ]
         ]
    
