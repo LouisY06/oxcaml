@@ -72,6 +72,46 @@
         // ============================================================
         // FIREBASE AUTH WRAPPER FUNCTIONS FOR OCAML
         // ============================================================
+        // Helper function to convert Firebase error codes to user-friendly messages
+        function getFriendlyErrorMessage(error) {
+            const errorCode = error.code || '';
+            const errorMessage = error.message || '';
+            
+            // Extract the error code from messages like "Firebase: Error (auth/invalid-credential)"
+            let code = errorCode;
+            if (!code && errorMessage.includes('auth/')) {
+                const match = errorMessage.match(/auth\/([a-z-]+)/i);
+                if (match) code = 'auth/' + match[1];
+            }
+            
+            // Map Firebase error codes to user-friendly messages
+            const errorMessages = {
+                'auth/invalid-credential': 'Invalid email or password. Please check your credentials and try again.',
+                'auth/user-not-found': 'No account found with this email address.',
+                'auth/wrong-password': 'Incorrect password. Please try again.',
+                'auth/email-already-in-use': 'This email is already registered. Please sign in instead.',
+                'auth/weak-password': 'Password is too weak. Please use at least 6 characters.',
+                'auth/invalid-email': 'Invalid email address. Please check your email format.',
+                'auth/too-many-requests': 'Too many failed attempts. Please wait a few minutes and try again.',
+                'auth/network-request-failed': 'Network error. Please check your internet connection.',
+                'auth/user-disabled': 'This account has been disabled. Please contact support.',
+                'auth/operation-not-allowed': 'This sign-in method is not enabled. Please contact support.',
+                'auth/requires-recent-login': 'Please sign out and sign in again to complete this action.'
+            };
+            
+            // Return user-friendly message if available, otherwise return the original message
+            if (code && errorMessages[code]) {
+                return errorMessages[code];
+            }
+            
+            // If no mapping found, try to extract a readable message from Firebase error
+            if (errorMessage.includes('auth/')) {
+                return 'Authentication error. Please check your credentials and try again.';
+            }
+            
+            return errorMessage || 'An unexpected error occurred. Please try again.';
+        }
+        
         window.firebaseSignIn = async function(email, password) {
             try {
                 console.log('firebaseSignIn called with email:', email);
@@ -80,8 +120,12 @@
                 console.log('Sign in successful! User:', userCredential.user.uid);
                 return { success: true, user: userCredential.user };
             } catch (error) {
-                console.error('Sign in error:', error.message);
-                return { success: false, error: error.message };
+                console.error('Sign in error:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                const friendlyMessage = getFriendlyErrorMessage(error);
+                console.error('User-friendly error:', friendlyMessage);
+                return { success: false, error: friendlyMessage };
             }
         };
         
@@ -101,9 +145,9 @@
                 console.error('Error code:', error.code);
                 console.error('Error message:', error.message);
                 console.error('Full error object:', JSON.stringify(error, null, 2));
-                // Return more detailed error information
-                const errorMessage = error.message || error.code || 'Unknown error';
-                return { success: false, error: errorMessage };
+                const friendlyMessage = getFriendlyErrorMessage(error);
+                console.error('User-friendly error:', friendlyMessage);
+                return { success: false, error: friendlyMessage };
             }
         };
         
