@@ -83,17 +83,21 @@ module Auth = struct
       then Some current_user
       else None
   
-  let get_user_info (user : user) : auth_state =
-    let uid = Js.to_string (Js.Unsafe.get user (Js.string "uid")) in
-    let email_opt =
-      let email = Js.Unsafe.get user (Js.string "email") in
-      if Js.Optdef.test email then Some (Js.to_string email) else None
-    in
-    let display_name_opt =
-      let name = Js.Unsafe.get user (Js.string "displayName") in
-      if Js.Optdef.test name then Some (Js.to_string name) else None
-    in
-    SignedIn { uid; email = email_opt; display_name = display_name_opt }
+         let get_user_info (user : user) : auth_state =
+           (* Check if user is null/undefined (signed out) *)
+           if Js.Optdef.test user && not (Js.is_null user) then
+             let uid = Js.to_string (Js.Unsafe.get user (Js.string "uid")) in
+             let email_opt =
+               let email = Js.Unsafe.get user (Js.string "email") in
+               if Js.Optdef.test email then Some (Js.to_string email) else None
+             in
+             let display_name_opt =
+               let name = Js.Unsafe.get user (Js.string "displayName") in
+               if Js.Optdef.test name then Some (Js.to_string name) else None
+             in
+             SignedIn { uid; email = email_opt; display_name = display_name_opt }
+           else
+             SignedOut
   
   (* Helper to convert JS promise to Deferred *)
   (* Since Deferred.t is just a JavaScript Promise, we can chain it directly *)
