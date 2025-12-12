@@ -151,72 +151,75 @@
             import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(async ({ onAuthStateChanged, getRedirectResult }) => {
                 console.log('Firebase auth module imported, setting up listener');
                 
-                // Check sessionStorage for Firebase redirect state BEFORE calling getRedirectResult
-                console.log('=== Checking sessionStorage for Firebase redirect state ===');
-                const sessionKeys = Object.keys(sessionStorage);
-                const firebaseRedirectKeys = sessionKeys.filter(key => key.includes('firebase') && key.includes('pendingRedirect'));
-                console.log('Firebase redirect keys in sessionStorage:', firebaseRedirectKeys);
-                firebaseRedirectKeys.forEach(key => {
-                    const value = sessionStorage.getItem(key);
-                    console.log(`  ${key}: ${value}`);
-                });
-                
-                // Check for redirect result FIRST and WAIT for it to complete
-                // This must be done before setting up onAuthStateChanged to avoid timing issues
-                console.log('=== Checking for redirect result... ===');
-                console.log('Calling getRedirectResult with auth:', auth);
-                console.log('Auth currentUser before getRedirectResult:', auth.currentUser);
-                try {
-                    const result = await getRedirectResult(auth);  // Use await to wait for completion
-                    console.log('=== getRedirectResult completed ===');
-                    console.log('Result object:', result);
-                    console.log('Result type:', typeof result);
-                    console.log('Result is null?', result === null);
-                    console.log('Result is undefined?', result === undefined);
-                    console.log('Auth currentUser after getRedirectResult:', auth.currentUser);
+                // CRITICAL: Check auth.currentUser FIRST before calling getRedirectResult
+                // getRedirectResult consumes the redirect state, so if currentUser already exists,
+                // we should use that instead
+                console.log('=== Checking auth.currentUser BEFORE getRedirectResult ===');
+                console.log('Auth currentUser:', auth.currentUser);
+                if (auth.currentUser) {
+                    console.log('✅ auth.currentUser already exists!');
+                    console.log('User email:', auth.currentUser.email);
+                    console.log('User UID:', auth.currentUser.uid);
+                    console.log('This means user is already signed in - calling callback immediately');
+                    callback(auth.currentUser);
+                    console.log('Callback called with existing currentUser');
+                } else {
+                    console.log('No currentUser - checking for redirect result...');
                     
-                    // Check sessionStorage again after getRedirectResult
-                    console.log('=== Checking sessionStorage AFTER getRedirectResult ===');
-                    const sessionKeysAfter = Object.keys(sessionStorage);
-                    const firebaseRedirectKeysAfter = sessionKeysAfter.filter(key => key.includes('firebase') && key.includes('pendingRedirect'));
-                    console.log('Firebase redirect keys after getRedirectResult:', firebaseRedirectKeysAfter);
+                    // Check sessionStorage for Firebase redirect state
+                    console.log('=== Checking sessionStorage for Firebase redirect state ===');
+                    const sessionKeys = Object.keys(sessionStorage);
+                    const firebaseRedirectKeys = sessionKeys.filter(key => key.includes('firebase') && key.includes('pendingRedirect'));
+                    console.log('Firebase redirect keys in sessionStorage:', firebaseRedirectKeys);
+                    firebaseRedirectKeys.forEach(key => {
+                        const value = sessionStorage.getItem(key);
+                        console.log(`  ${key}: ${value}`);
+                    });
                     
-                    if (result) {
-                        console.log('Result.user:', result.user);
-                        console.log('Result.operationType:', result.operationType);
-                        console.log('Result.providerId:', result.providerId);
-                    }
-                    
-                    if (result && result.user) {
-                        console.log('✅ Google redirect sign-in successful!');
-                        console.log('User email:', result.user.email);
-                        console.log('User UID:', result.user.uid);
-                        console.log('NOW CALLING CALLBACK WITH USER...');
+                    // Check for redirect result
+                    console.log('=== Calling getRedirectResult ===');
+                    try {
+                        const result = await getRedirectResult(auth);  // Use await to wait for completion
+                        console.log('=== getRedirectResult completed ===');
+                        console.log('Result object:', result);
+                        console.log('Result is null?', result === null);
+                        console.log('Auth currentUser after getRedirectResult:', auth.currentUser);
                         
-                        // CRITICAL: Call the callback with the signed-in user
-                        callback(result.user);
+                        if (result && result.user) {
+                            console.log('✅ Google redirect sign-in successful from getRedirectResult!');
+                            console.log('User email:', result.user.email);
+                            console.log('User UID:', result.user.uid);
+                            console.log('NOW CALLING CALLBACK WITH USER...');
+                            
+                            // CRITICAL: Call the callback with the signed-in user
+                            callback(result.user);
+                            
+                            console.log('Callback called successfully');
+                        } else if (auth.currentUser) {
+                            // If getRedirectResult returns null but auth.currentUser now exists,
+                            // the redirect was processed but getRedirectResult didn't return it
+                            console.log('⚠️ getRedirectResult returned null BUT auth.currentUser now exists!');
+                            console.log('Current user email:', auth.currentUser.email);
+                            console.log('Current user UID:', auth.currentUser.uid);
+                            console.log('Redirect was processed - calling callback with currentUser');
+                            callback(auth.currentUser);
+                        } else {
+                            console.log('ℹ️ No redirect result and no currentUser');
+                            console.log('This is normal if:');
+                            console.log('  - User just loaded the page (no redirect)');
+                            console.log('  - User used email/password sign-in');
+                        }
+                    } catch (error) {
+                        console.log('❌ Redirect result error:', error);
+                        console.log('Error code:', error.code);
+                        console.log('Error message:', error.message);
                         
-                        console.log('Callback called successfully');
-                    } else if (auth.currentUser) {
-                        // If getRedirectResult returns null but auth.currentUser exists, 
-                        // the redirect might have already been processed
-                        console.log('⚠️ getRedirectResult returned null BUT auth.currentUser exists!');
-                        console.log('Current user email:', auth.currentUser.email);
-                        console.log('Current user UID:', auth.currentUser.uid);
-                        console.log('This might mean redirect was already processed - calling callback with currentUser');
-                        callback(auth.currentUser);
-                    } else {
-                        console.log('ℹ️ No redirect result - user probably did not use Google sign-in');
-                        console.log('This is normal if:');
-                        console.log('  - User just loaded the page (no redirect)');
-                        console.log('  - User used email/password sign-in');
-                        console.log('  - Redirect already processed');
+                        // Even if getRedirectResult fails, check if currentUser exists
+                        if (auth.currentUser) {
+                            console.log('⚠️ Error but auth.currentUser exists - using currentUser');
+                            callback(auth.currentUser);
+                        }
                     }
-                } catch (error) {
-                    console.log('❌ Redirect result error:', error);
-                    console.log('Error code:', error.code);
-                    console.log('Error message:', error.message);
-                    console.log('Error stack:', error.stack);
                 }
                 
                 // THEN set up the ongoing auth state listener
