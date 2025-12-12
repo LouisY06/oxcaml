@@ -87,14 +87,23 @@
         
         window.firebaseCreateUser = async function(email, password) {
             try {
-                console.log('firebaseCreateUser called with email:', email);
+                console.log('=== firebaseCreateUser called ===');
+                console.log('Email:', email);
+                console.log('Password length:', password ? password.length : 0);
                 const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                console.log('Calling createUserWithEmailAndPassword...');
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                console.log('Sign up successful! User:', userCredential.user.uid);
+                console.log('✅ Sign up successful! User UID:', userCredential.user.uid);
+                console.log('User email:', userCredential.user.email);
                 return { success: true, user: userCredential.user };
             } catch (error) {
-                console.error('Sign up error:', error.message);
-                return { success: false, error: error.message };
+                console.error('❌ Sign up error:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                console.error('Full error object:', JSON.stringify(error, null, 2));
+                // Return more detailed error information
+                const errorMessage = error.message || error.code || 'Unknown error';
+                return { success: false, error: errorMessage };
             }
         };
         
