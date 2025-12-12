@@ -85,23 +85,21 @@ module Auth = struct
   
   let get_user_info (user : user) : auth_state =
     (* Check if user is null/undefined (signed out) *)
-    (* In js_of_ocaml, we can check if a value is null using Js.is_null *)
+    (* In js_of_ocaml, we check for null by comparing to Js.null *)
     try
-      if Js.is_null user then
-        SignedOut
-      else
-        let uid = Js.to_string (Js.Unsafe.get user (Js.string "uid")) in
-        let email_opt =
-          let email = Js.Unsafe.get user (Js.string "email") in
-          if Js.Optdef.test email then Some (Js.to_string email) else None
-        in
-        let display_name_opt =
-          let name = Js.Unsafe.get user (Js.string "displayName") in
-          if Js.Optdef.test name then Some (Js.to_string name) else None
-        in
-        SignedIn { uid; email = email_opt; display_name = display_name_opt }
+      (* Try to access uid - if it fails, user is null/undefined *)
+      let uid = Js.to_string (Js.Unsafe.get user (Js.string "uid")) in
+      let email_opt =
+        let email = Js.Unsafe.get user (Js.string "email") in
+        if Js.Optdef.test email then Some (Js.to_string email) else None
+      in
+      let display_name_opt =
+        let name = Js.Unsafe.get user (Js.string "displayName") in
+        if Js.Optdef.test name then Some (Js.to_string name) else None
+      in
+      SignedIn { uid; email = email_opt; display_name = display_name_opt }
     with
-    | _ -> SignedOut (* If accessing properties fails, user is signed out *)
+    | _ -> SignedOut (* If accessing properties fails, user is null/undefined (signed out) *)
   
   (* Helper to convert JS promise to Deferred *)
   (* Since Deferred.t is just a JavaScript Promise, we can chain it directly *)
@@ -188,11 +186,8 @@ module Auth = struct
           let auth_state = match Js.Optdef.to_option user with
           | None -> SignedOut
           | Some u -> 
-            (* Double-check: user might be null even if Some *)
-            if Js.is_null u then
-              SignedOut
-            else
-              get_user_info u
+            (* get_user_info will handle null users with try/catch *)
+            get_user_info u
           in
           let () = Stdio.printf "Calling OCaml callback with auth_state: %s\n%!" 
             (match auth_state with
