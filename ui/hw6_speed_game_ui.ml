@@ -1429,12 +1429,15 @@ let app =
             | _ -> new_model)
          | _ -> new_model))
         in
-        let () = Stdio.printf "*** STATE MACHINE: Returning final_model with screen: %s ***\n%!"
+        let () = Stdio.printf "*** STATE MACHINE: Returning final_model with screen: %s, auth_state: %s ***\n%!"
           (match final_model.screen with
            | LoginScreen -> "LoginScreen"
            | ProfileScreen -> "ProfileScreen"
            | ModeSelectionScreen -> "ModeSelectionScreen"
            | GameScreen -> "GameScreen")
+          (match final_model.auth_state with
+           | NotAuthenticated -> "NotAuthenticated"
+           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
         in
         final_model)
   in
