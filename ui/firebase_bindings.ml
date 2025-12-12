@@ -243,7 +243,21 @@ module Auth = struct
              | SignedOut -> "SignedOut"
              | SignedIn { email; _ } -> Printf.sprintf "SignedIn (%s)" (Option.value email ~default:"no email"))
           in
-          callback auth_state)
+          (* Schedule the callback using setTimeout to ensure Bonsai can process it *)
+          (* This is especially important after Google redirect when the page reloads *)
+          let setTimeout = Js.Unsafe.global##.setTimeout in
+          if Js.Optdef.test setTimeout then
+            ignore (Js.Unsafe.fun_call setTimeout [|
+              Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+                let () = Stdio.printf "*** setTimeout callback - calling OCaml auth callback ***\n%!" in
+                callback auth_state;
+                let () = Stdio.printf "*** OCaml auth callback called successfully ***\n%!" in
+                ()));
+              Js.Unsafe.inject (Js.number_of_float 10.0) (* 10ms delay *)
+            |])
+          else
+            (* Fallback - call immediately if setTimeout not available *)
+            callback auth_state)
       in
       let set_callback = Js.Unsafe.global##.setFirebaseAuthCallback in
       if Js.Optdef.test set_callback then
