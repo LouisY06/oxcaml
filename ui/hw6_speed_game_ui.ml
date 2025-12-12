@@ -489,11 +489,16 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Sign_in ->
       (* Validate email and password before attempting sign in *)
+      let () = Stdio.printf "*** Sign_in action received - email='%s', password length=%d ***\n%!" 
+        model.login_email (String.length model.login_password) in
       if String.is_empty model.login_email || String.is_empty model.login_password then
+        let () = Stdio.printf "*** Sign_in: Validation failed - empty email or password ***\n%!" in
         { model with game_message = "Please enter both email and password." }
       else
+        let () = Stdio.printf "*** Sign_in: Validation passed, setting 'Signing in...' message ***\n%!" in
         (* Sign in will be handled in state machine callback with error handling *)
-      { model with login_password = ""; game_message = "Signing in..." }
+        (* DON'T clear password here - state machine callback needs it! *)
+        { model with game_message = "Signing in..." }
   
   | Sign_up ->
       (* Validate email and password before attempting sign up *)
@@ -501,7 +506,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         { model with game_message = "Please enter both email and password." }
       else
         (* Sign up will be handled in state machine callback with error handling *)
-      { model with login_password = ""; game_message = "Creating account..." }
+        (* DON'T clear password here - state machine callback needs it! *)
+        { model with game_message = "Creating account..." }
   
   | Sign_in_with_google ->
       (* Google sign in will be handled in state machine callback with error handling *)
@@ -1378,13 +1384,18 @@ let app =
         let final_model = (match action with
          | Sign_in ->
            (* Only attempt sign-in if email and password are not empty *)
+           let () = Stdio.printf "*** STATE MACHINE: Sign_in handler - email='%s', password length=%d ***\n%!" 
+             new_model.login_email (String.length new_model.login_password) in
            if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
-             let () = Stdio.printf "Sign_in: Email or password is empty, skipping\n%!" in
-             new_model (* Already handled validation in apply_action, just return model *)
+             let () = Stdio.printf "*** STATE MACHINE: Sign_in - Email or password is empty, skipping Firebase call ***\n%!" in
+             (* Update message to show validation error *)
+             { new_model with game_message = "Please enter both email and password." }
            else
              (* Handle sign in errors *)
-             let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
+             let () = Stdio.printf "*** STATE MACHINE: Sign_in - Validation passed, calling Firebase ***\n%!" in
              let () = Stdio.printf "*** CALLING Firebase sign_in_with_email_and_password NOW ***\n%!" in
+             let () = Stdio.printf "*** Email: %s, Password: [%d chars] ***\n%!" 
+               new_model.login_email (String.length new_model.login_password) in
              let deferred_result = Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password in
              let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
              ignore (Deferred.bind ~f:(function
@@ -1409,16 +1420,22 @@ let app =
                  Ui_effect.Expert.handle effect;
                  Deferred.return ()) deferred_result);
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
-             new_model
+             (* Clear password after using it for security *)
+             { new_model with login_password = "" }
          | Sign_up ->
            (* Only attempt sign-up if email and password are not empty *)
+           let () = Stdio.printf "*** STATE MACHINE: Sign_up handler - email='%s', password length=%d ***\n%!" 
+             new_model.login_email (String.length new_model.login_password) in
            if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
-             let () = Stdio.printf "Sign_up: Email or password is empty, skipping\n%!" in
-             new_model (* Already handled validation in apply_action, just return model *)
+             let () = Stdio.printf "*** STATE MACHINE: Sign_up - Email or password is empty, skipping Firebase call ***\n%!" in
+             (* Update message to show validation error *)
+             { new_model with game_message = "Please enter both email and password." }
            else
              (* Handle sign up errors *)
-             let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
+             let () = Stdio.printf "*** STATE MACHINE: Sign_up - Validation passed, calling Firebase ***\n%!" in
              let () = Stdio.printf "*** CALLING Firebase create_user_with_email_and_password NOW ***\n%!" in
+             let () = Stdio.printf "*** Email: %s, Password: [%d chars] ***\n%!" 
+               new_model.login_email (String.length new_model.login_password) in
              let deferred_result = Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password in
              let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
              ignore (Deferred.bind ~f:(function
@@ -1443,7 +1460,8 @@ let app =
                  Ui_effect.Expert.handle effect;
                  Deferred.return ()) deferred_result);
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
-             new_model
+             (* Clear password after using it for security *)
+             { new_model with login_password = "" }
          | Sign_in_with_google ->
            (* Handle Google sign in - uses redirect, so page will navigate away *)
            ignore (Deferred.bind ~f:(function
