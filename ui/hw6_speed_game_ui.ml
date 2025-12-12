@@ -649,14 +649,22 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
 
 let setup_firestore_listener (match_id : string) (player_id : string) (inject : Action.t -> unit Effect.t) : Js.Unsafe.any option =
   (* Set up real-time listener for game state changes *)
+  let () = Stdio.printf "*** Setting up Firestore listener for match: %s, player: %s ***\n%!" match_id player_id in
   match Firebase_bindings.Firestore.on_snapshot "matches" match_id (fun data_opt ->
+    let () = Stdio.printf "*** Firestore listener fired for match: %s ***\n%!" match_id in
     match data_opt with
-    | None -> () (* Document doesn't exist *)
+    | None -> 
+      let () = Stdio.printf "*** Firestore listener: Document doesn't exist yet ***\n%!" in
+      () (* Document doesn't exist *)
     | Some data ->
+      let () = Stdio.printf "*** Firestore listener: Document exists, parsing game state ***\n%!" in
       let game_state_str = Js.to_string (Js.Unsafe.get data (Js.string "gameState")) in
       let last_updated = Js.to_string (Js.Unsafe.get data (Js.string "lastUpdatedBy")) in
-      (* Only update if change came from opponent *)
-      if not (String.equal last_updated player_id) then
+      let () = Stdio.printf "*** Firestore listener: lastUpdatedBy=%s, player_id=%s ***\n%!" last_updated player_id in
+      (* Update if change came from opponent OR if this is the first time we're seeing the game state *)
+      (* For non-host, we need to load the initial state even if it was created by the host *)
+      (* Always update if the game state string is not empty and different from what we have *)
+      if not (String.equal last_updated player_id) && not (String.is_empty game_state_str) then
         try
           let sexp = Parsexp.Single.parse_string_exn game_state_str in
           let new_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
@@ -935,18 +943,36 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with matchmaking_status = "idle"; game_message = "Matchmaking cancelled." }
   
   | Match_found { match_id; player_id; opponent_id } ->
-      let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
-      (* Sync initial game state to Firestore *)
-      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
-      { model with
-        screen = GameScreen
-      ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
-      ; enhanced_state = new_enhanced_state
-      ; selected_card = None
-      ; matchmaking_status = "matched"
-      ; game_started = false
-      ; game_message = Printf.sprintf "Match found! Click 'Start Game' to begin playing against %s" opponent_id
-      }
+      (* Check if we're the host (player1) by checking if we created the lobby *)
+      (* For now, we'll determine host by checking if match_id starts with our player_id *)
+      let is_host = String.is_prefix ~prefix:player_id match_id in
+      let () = Stdio.printf "*** Match_found: match_id=%s, player_id=%s, opponent_id=%s, is_host=%b ***\n%!" match_id player_id opponent_id is_host in
+      if is_host then
+        (* Host creates the initial game state and saves it to Firestore *)
+        let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
+        let () = Stdio.printf "*** Host: Creating initial game state and saving to Firestore ***\n%!" in
+        ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
+        { model with
+          screen = GameScreen
+        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+        ; enhanced_state = new_enhanced_state
+        ; selected_card = None
+        ; matchmaking_status = "matched"
+        ; game_started = false
+        ; game_message = Printf.sprintf "Match found! Click 'Start Game' to begin playing against %s" opponent_id
+        }
+      else
+        (* Non-host waits for game state from Firestore - listener will be set up in state machine *)
+        let () = Stdio.printf "*** Non-host: Will wait for game state from Firestore ***\n%!" in
+        { model with
+          screen = GameScreen
+        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+        ; enhanced_state = model.enhanced_state (* Keep existing state until we get the real one *)
+        ; selected_card = None
+        ; matchmaking_status = "matched"
+        ; game_started = false
+        ; game_message = Printf.sprintf "Match found! Waiting for game to start..." 
+        }
   
   | Game_state_synced new_state ->
       { model with enhanced_state = new_state }
@@ -1904,11 +1930,52 @@ let app =
          | _ -> 
         (* Set up Firestore listener when entering multiplayer mode *)
         (match action, new_model.game_mode with
-         | Match_found { match_id; player_id; _ }, OnlineMultiplayer _ ->
-           (match setup_firestore_listener match_id player_id inject with
-            | Some unsubscribe ->
-              { new_model with firestore_unsubscribe = Some unsubscribe }
-            | None -> new_model)
+         | Match_found { match_id; player_id; _ }, OnlineMultiplayer { match_id = match_id2; _ } 
+           when String.equal match_id match_id2 ->
+           let () = Stdio.printf "*** STATE MACHINE: Setting up Firestore listener for match: %s ***\n%!" match_id in
+           (* Check if we're the host - host creates state, non-host waits for it *)
+           let is_host = String.is_prefix ~prefix:player_id match_id in
+           if is_host then
+             (* Host: Set up listener for opponent's moves *)
+             (match setup_firestore_listener match_id player_id inject with
+              | Some unsubscribe ->
+                { new_model with firestore_unsubscribe = Some unsubscribe }
+              | None -> new_model)
+           else
+             (* Non-host: Set up listener and try to load initial state *)
+             (match setup_firestore_listener match_id player_id inject with
+              | Some unsubscribe ->
+                (* Try to load initial game state from Firestore *)
+                ignore (Deferred.bind (Firebase_bindings.Firestore.get_doc "matches" match_id) ~f:(fun result ->
+                  match result with
+                  | Ok (Some data) ->
+                    let () = Stdio.printf "*** Non-host: Loaded initial game state from Firestore ***\n%!" in
+                    (try
+                      let game_state_str = Js.to_string (Js.Unsafe.get data (Js.string "gameState")) in
+                      let sexp = Parsexp.Single.parse_string_exn game_state_str in
+                      let game_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
+                      let effect = inject (Action.Game_state_synced game_state) in
+                      let setTimeout = Js.Unsafe.global##.setTimeout in
+                      if Js.Optdef.test setTimeout then
+                        ignore (Js.Unsafe.fun_call setTimeout [|
+                          Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+                          Js.Unsafe.inject (Js.number_of_float 10.0)
+                        |])
+                      else
+                        Ui_effect.Expert.handle effect
+                    with
+                    | e ->
+                      let () = Stdio.printf "*** Error parsing game state: %s ***\n%!" (Exn.to_string e) in
+                      ());
+                    Deferred.return ()
+                  | Ok None ->
+                    let () = Stdio.printf "*** Non-host: Game state not ready yet, will wait for listener ***\n%!" in
+                    Deferred.return ()
+                  | Error e ->
+                    let () = Stdio.printf "*** Non-host: Error loading game state: %s ***\n%!" e in
+                    Deferred.return ()));
+                { new_model with firestore_unsubscribe = Some unsubscribe }
+              | None -> new_model)
          | Start_matchmaking, _ ->
            (* Re-inject start_matchmaking with proper inject function *)
            (match new_model.auth_state with
