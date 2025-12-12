@@ -267,10 +267,21 @@
     <div id="offline-status" class="offline-status">Online</div>
     <div id="save-indicator" class="save-indicator">Game saved!</div>
     <div id="app" style="min-height: 100vh;">
-        <div style="padding: 20px; text-align: center; color: #666;">
-            Loading app...
-        </div>
+        <!-- App will mount here -->
     </div>
+    <script>
+        // CRITICAL: Clear saved game IMMEDIATELY, before OCaml app loads
+        (function() {
+            try {
+                if (localStorage.getItem('speed_game_state')) {
+                    console.log('CLEARING saved game from localStorage before app loads');
+                    localStorage.removeItem('speed_game_state');
+                }
+            } catch (e) {
+                console.log('Could not clear saved game:', e);
+            }
+        })();
+    </script>
 
     <!-- Include the compiled Bonsai JavaScript -->
     <script>

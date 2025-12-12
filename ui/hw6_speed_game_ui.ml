@@ -719,13 +719,13 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                })
    
   | AI_move_continuous | Trigger_periodic_update ->
-      (* Only run AI in single player mode *)
-      (match model.game_mode with
-       | OnlineMultiplayer _ -> model (* Opponent plays via Firestore sync *)
-       | SinglePlayer ->
-         if model.enhanced_state.base_state.game_over then
-           model
-         else
+      (* Only run AI if we're on GameScreen, game is started, and in single player mode *)
+      (match model.screen, model.game_started, model.game_mode with
+       | GameScreen, true, SinglePlayer ->
+          (* Run AI logic - only when actually playing *)
+          if model.enhanced_state.base_state.game_over then
+            model
+          else
            (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
            let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
            
@@ -788,6 +788,9 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
            (* Auto-save after AI move *)
            LocalStorage.save updated_model;
            updated_model)
+       | _ -> 
+          (* Not on game screen, game not started, or multiplayer - don't run AI *)
+          model)
 ;;
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
