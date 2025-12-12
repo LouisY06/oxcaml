@@ -457,6 +457,9 @@
         // 2. Wait for page load to avoid blocking initial render
         // 3. Register the service worker file (sw.js)
         // 4. Handle registration success/failure
+        // TEMPORARILY DISABLED: Service worker is caching old code and interfering with Firebase redirects
+        // Re-enable after Firebase redirect issue is resolved
+        /*
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 // Use relative path './sw.js' for GitHub Pages compatibility
@@ -478,6 +481,8 @@
                 });
             });
         }
+        */
+        console.log('Service Worker registration DISABLED for debugging Firebase redirects');
         
         // ============================================================
         // ONLINE/OFFLINE STATUS MONITORING
