@@ -10,6 +10,20 @@
     <link rel="stylesheet" href="hw5_html_css/hw5_speed_game.css">
     <!-- Firebase SDK -->
     <script type="module">
+        // Log page load to detect reloads
+        console.log('=== PAGE LOAD DETECTED ===');
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('URL:', window.location.href);
+        console.log('Referrer:', document.referrer);
+        console.log('Performance navigation type:', performance.navigation.type);
+        if (performance.navigation.type === 0) {
+            console.log('Navigation type: TYPE_NAVIGATE (first load)');
+        } else if (performance.navigation.type === 1) {
+            console.log('Navigation type: TYPE_RELOAD (page reload)');
+        } else if (performance.navigation.type === 2) {
+            console.log('Navigation type: TYPE_BACK_FORWARD (back/forward)');
+        }
+        
         // Check for redirect result IMMEDIATELY, before Firebase initializes
         // This is critical - Firebase stores redirect state in URL parameters
         console.log('=== CHECKING URL FOR REDIRECT PARAMETERS ===');
@@ -486,6 +500,22 @@
         }
         */
         console.log('Service Worker registration DISABLED for debugging Firebase redirects');
+        
+        // Also unregister any existing service workers on every page load
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for(let registration of registrations) {
+                    console.log('Unregistering existing service worker:', registration.scope);
+                    registration.unregister().then(function(success) {
+                        if (success) {
+                            console.log('✅ Service worker unregistered successfully');
+                        } else {
+                            console.log('❌ Failed to unregister service worker');
+                        }
+                    });
+                }
+            });
+        }
         
         // ============================================================
         // ONLINE/OFFLINE STATUS MONITORING
