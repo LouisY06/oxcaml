@@ -88,7 +88,7 @@ module Game_state : sig
     [@@deriving sexp, compare]
   end
 
-  val create : unit -> t
+  val create : ?seed:int -> unit -> t
   val make_move : t -> Move.t -> (t, Move_error.t) Result.t
   val get_all_moves : t -> Move.t list
   val to_string : t -> string
@@ -104,7 +104,7 @@ module Enhanced_game_state : sig
     }
   [@@deriving sexp, compare, equal]
 
-  val create : unit -> t
+  val create : ?seed:int -> unit -> t
   val make_move : t -> Move.t -> string -> (t, string) Result.t
   val get_all_moves : t -> string -> Move.t list
   val are_both_players_stuck : t -> bool

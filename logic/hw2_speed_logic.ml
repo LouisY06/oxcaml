@@ -22,8 +22,8 @@ module Enhanced_game_state = struct
     }
   [@@deriving sexp, compare, equal]
 
-  let create () =
-    { base_state = Game_state.create ()
+  let create ?seed () =
+    { base_state = Game_state.create ?seed ()
     ; game_log = [ "Game started! Click 'New Game' to begin." ]
     ; simultaneous_mode = true
     ; ai_thinking = false

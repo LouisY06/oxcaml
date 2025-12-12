@@ -89,7 +89,7 @@ module Game_state : sig
     [@@deriving sexp, compare]
   end
 
-  val create : unit -> t
+  val create : ?seed:int -> unit -> t
   val make_move : t -> Move.t -> (t, Move_error.t) Result.t
   val get_all_moves : t -> Move.t list
   val to_string : t -> string

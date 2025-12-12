@@ -150,7 +150,11 @@ module Game_state = struct
   end
 
   (* Create initial game state *)
-  let create () : t =
+  let create ?seed () : t =
+    (* Set random seed if provided for deterministic shuffling *)
+    (match seed with
+     | Some s -> Random.init s
+     | None -> ());
     (* Create a standard 52-card deck *)
     let suits = [ Card.Hearts; Card.Diamonds; Card.Clubs; Card.Spades ] in
     let ranks =
