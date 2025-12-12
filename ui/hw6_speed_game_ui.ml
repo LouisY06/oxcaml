@@ -56,6 +56,7 @@ module Model = struct
       ; game_started : bool (* Whether the game has been started *)
       ; player_stats : player_stats option (* Player statistics, loaded from Firestore *)
       ; lobby_code : string (* Lobby code for joining games *)
+      ; created_lobby_code : string option (* Lobby code of the lobby we created (for display) *)
       }
   [@@deriving sexp, compare, equal]
 
@@ -81,6 +82,7 @@ module Model = struct
       ; game_started = false
       ; player_stats = None
       ; lobby_code = ""
+      ; created_lobby_code = None
       }
    ;;
 end
@@ -111,6 +113,7 @@ module Action = struct
     | Create_lobby (* Create a new lobby with a code *)
     | Join_lobby (* Join a lobby by entering a code *)
     | Update_lobby_code of string (* Update the lobby code input field *)
+    | Lobby_created of string (* Lobby was created with this code *)
     | Go_to_mode_selection (* Go back to mode selection *)
     | Go_to_profile (* Go to profile screen *)
     | Load_player_stats (* Load player stats from Firestore *)
@@ -380,8 +383,7 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
   let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code lobby_data in
   let () = Stdio.printf "*** Lobby created successfully ***\n%!" in
   (* Update the model to show the lobby code *)
-  let message = Printf.sprintf "Lobby created! Code: %s - Waiting for opponent to join..." lobby_code in
-  let effect = inject (Action.Update_login_error message) in
+  let effect = inject (Action.Lobby_created lobby_code) in
   let setTimeout = Js.Unsafe.global##.setTimeout in
   if Js.Optdef.test setTimeout then
     ignore (Js.Unsafe.fun_call setTimeout [|
@@ -399,7 +401,10 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
       ()
     | Some data ->
       (* Check if data is actually valid before accessing properties *)
+      (* First check if data is a valid JavaScript object *)
       try
+        (* Try to access a property to see if data is valid *)
+        let _ = Js.Unsafe.get data (Js.string "status") in
         let status_raw = Js.Unsafe.get data (Js.string "status") in
         if Js.Optdef.test status_raw then
           let status = Js.to_string status_raw in
@@ -874,6 +879,9 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   | Update_lobby_code code ->
       { model with lobby_code = code }
   
+  | Lobby_created code ->
+      { model with created_lobby_code = Some code; game_message = Printf.sprintf "Lobby created! Code: %s" code }
+  
   | Go_to_mode_selection ->
       (* Clean up any active game/matchmaking *)
       (match model.firestore_unsubscribe with
@@ -1200,7 +1208,34 @@ module Components = struct
       let open Vdom in
           Node.div
         ~attrs:[ Attr.create "class" "mode-selection-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
-        [ Node.div
+        [ (* Display lobby code if one was created *)
+          (match model.created_lobby_code with
+           | Some code ->
+             Node.div
+               ~attrs:[ Attr.create "style" "position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 1000; text-align: center; min-width: 300px;" ]
+               [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "🎮 Your Lobby Code" ]
+               ; Node.div
+                   ~attrs:[ Attr.create "style" "font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 10px 0; font-family: monospace;" ]
+                   [ Node.text code ]
+               ; Node.div
+                   ~attrs:[ Attr.create "style" "font-size: 14px; margin-top: 10px; opacity: 0.9;" ]
+                   [ Node.text "Share this code with your friend to play together!" ]
+               ; Node.button
+                   ~attrs:
+                     [ Attr.create "style" "margin-top: 15px; padding: 10px 20px; background: white; color: #4CAF50; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
+                     ; on_click (fun _ ->
+                         (* Copy code to clipboard using JavaScript *)
+                         let copy_code_js = Js.Unsafe.global##.navigator##.clipboard in
+                         if Js.Optdef.test copy_code_js then
+                           let _ = Js.Unsafe.meth_call copy_code_js "writeText" [| Js.Unsafe.inject (Js.string code) |] in
+                           inject (Action.Update_login_error "Code copied to clipboard!")
+                         else
+                           inject (Action.Update_login_error "Clipboard not available"))
+                     ]
+                   [ Node.text "📋 Copy Code" ]
+               ]
+           | None -> Node.div [])
+        ; Node.div
             ~attrs:[ Attr.create "class" "mode-selection"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 400px; text-align: center;" ]
             [ Node.h1 ~attrs:[ Attr.create "style" "margin-bottom: 30px; color: #333;" ] [ Node.text "Choose Game Mode" ]
             ; Node.div
@@ -1618,7 +1653,8 @@ let app =
             | Action.Game_state_synced _ -> "Game_state_synced"
             | Action.Create_lobby -> "Create_lobby"
             | Action.Join_lobby -> "Join_lobby"
-            | Action.Update_lobby_code _ -> "Update_lobby_code")
+            | Action.Update_lobby_code _ -> "Update_lobby_code"
+            | Action.Lobby_created _ -> "Lobby_created")
         in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"
@@ -1853,10 +1889,14 @@ let app =
               ignore (Deferred.bind ~f:(fun () -> 
                 let () = Stdio.printf "*** create_lobby completed ***\n%!" in
                 Deferred.return ()) (create_lobby uid inject));
-              { new_model with game_message = "Creating lobby... Waiting for opponent to join." }
+              { new_model with game_message = "Creating lobby..." }
             | Model.NotAuthenticated ->
               let () = Stdio.printf "*** User is NOT authenticated, cannot create lobby ***\n%!" in
               new_model)
+         | Lobby_created code, _ ->
+           (* Lobby was created - store the code and show it *)
+           let () = Stdio.printf "*** STATE MACHINE: Lobby_created action - code=%s ***\n%!" code in
+           { new_model with created_lobby_code = Some code; game_message = Printf.sprintf "Lobby created! Code: %s - Waiting for opponent..." code }
          | Join_lobby, _ ->
            (* Join a lobby when Join_lobby action is triggered *)
            let () = Stdio.printf "*** STATE MACHINE: Join_lobby action - joining lobby with code: %s ***\n%!" new_model.lobby_code in
