@@ -970,16 +970,19 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
            let player_id = Websocket_bindings.get_string_field msg "playerId" |> Option.value ~default:"" in
            let opponent_id = Websocket_bindings.get_string_field msg "opponentId" |> Option.value ~default:"" in
            let is_host = Websocket_bindings.get_bool_field msg "isHost" |> Option.value ~default:false in
-           let () = Stdio.printf "*** WS: Match found! match_id=%s, isHost=%b ***\n%!" match_id is_host in
+           let lobby_code = Websocket_bindings.get_string_field msg "lobbyCode" |> Option.value ~default:"" in
+           let () = Stdio.printf "*** WS: Match found! match_id=%s, lobby=%s, isHost=%b ***\n%!" match_id lobby_code is_host in
            (* Create game state with deterministic seed *)
            let seed = string_to_seed match_id in
            let () = Stdio.printf "*** Creating game state with seed=%d from match_id ***\n%!" seed in
            let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
            { model with
-             game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+             screen = GameScreen
+           ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
            ; enhanced_state = new_enhanced_state
            ; game_started = false
-           ; game_message = "Match found! Waiting for game to start..."
+           ; created_lobby_code = Some lobby_code
+           ; game_message = "Match found! Click 'Start Game' to begin!"
            }
        | Some "game_state_update" ->
            let () = Stdio.printf "*** WS: Game state update received ***\n%!" in
