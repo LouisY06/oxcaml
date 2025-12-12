@@ -2,6 +2,6 @@
  (modes js)
  (names hw6_speed_game_app)
  (libraries bonsai bonsai.web core speed_logic_library js_of_ocaml)
- (modules hw6_speed_game_app hw6_speed_game_ui firebase_bindings)
+ (modules hw6_speed_game_app hw6_speed_game_ui firebase_bindings websocket_bindings)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai js_of_ocaml-ppx)))
