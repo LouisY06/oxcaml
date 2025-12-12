@@ -65,22 +65,22 @@ module Model = struct
    ; win_rate = 0.0
    }
 
-  let initial =
+   let initial =
      let () = Stdio.printf "*** Model.initial called - creating LoginScreen model ***\n%!" in
      { screen = LoginScreen
      ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
-     ; selected_card = None
+      ; selected_card = None
      ; game_message = ""
-     ; auth_state = NotAuthenticated
-     ; game_mode = SinglePlayer
-     ; login_email = ""
-     ; login_password = ""
-     ; matchmaking_status = "idle"
-     ; firestore_unsubscribe = None
+      ; auth_state = NotAuthenticated
+      ; game_mode = SinglePlayer
+      ; login_email = ""
+      ; login_password = ""
+      ; matchmaking_status = "idle"
+      ; firestore_unsubscribe = None
      ; game_started = false
      ; player_stats = None
-     }
-  ;;
+      }
+   ;;
 end
 
 module Action = struct
@@ -195,7 +195,7 @@ module LocalStorage = struct
   let load () : Model.t option =
     (* Don't auto-load saved games - user must explicitly load via Load_saved_game action *)
     (* This ensures we always start on the login screen *)
-    None
+      None
   
   (* ============================================================
      CLEAR - Remove saved game state from Local Storage
@@ -493,7 +493,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         { model with game_message = "Please enter both email and password." }
       else
         (* Sign in will be handled in state machine callback with error handling *)
-        { model with login_password = ""; game_message = "Signing in..." }
+      { model with login_password = ""; game_message = "Signing in..." }
   
   | Sign_up ->
       (* Validate email and password before attempting sign up *)
@@ -501,7 +501,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         { model with game_message = "Please enter both email and password." }
       else
         (* Sign up will be handled in state machine callback with error handling *)
-        { model with login_password = ""; game_message = "Creating account..." }
+      { model with login_password = ""; game_message = "Creating account..." }
   
   | Sign_in_with_google ->
       (* Google sign in will be handled in state machine callback with error handling *)
@@ -555,8 +555,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (match new_auth_state, model.screen with
        | Model.NotAuthenticated, _ ->
          let () = Stdio.printf "Setting screen to LoginScreen (user signed out)\n%!" in
-         { model with
-           auth_state = new_auth_state
+      { model with
+        auth_state = new_auth_state
          ; screen = LoginScreen
          }
        | Model.Authenticated _, LoginScreen ->
@@ -752,70 +752,70 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (match model.screen, model.game_started, model.game_mode with
        | GameScreen, true, SinglePlayer ->
           (* Run AI logic - only when actually playing *)
-          if model.enhanced_state.base_state.game_over then
-            model
-          else
-            (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
-            let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
-            
-            (* Let AI try to play multiple cards in a burst *)
-            let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
-              if max_moves <= 0 || enh_state.base_state.game_over then
-                enh_state
-              else
-                match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
-                | Some ai_move ->
-                   (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
-                    | Ok new_state ->
-                       let state_with_draw = auto_draw_until_full new_state "Player2" in
-                       let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
-                       ai_play_all state_after_stuck (max_moves - 1)
-                    | Error _ -> enh_state)
-                | None -> enh_state
-            in
-            
-            let final_state = ai_play_all state_with_draws 1 in
-            let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
-              (List.length final_state.base_state.player1_hand)
-              (List.length final_state.base_state.player1_stock)
-              (List.length final_state.base_state.player2_hand)
-              (List.length final_state.base_state.player2_stock)
-              final_state.base_state.game_over in
-            
-            let updated_model = if final_state.base_state.game_over then
-              (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
-                (match final_state.base_state.winner with
-                 | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
-                 | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
-                 | None -> "None") in
-               match final_state.base_state.winner with
-               | Some Hw2_speed_logic.Player.Player1 -> 
+         if model.enhanced_state.base_state.game_over then
+           model
+         else
+           (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
+           let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
+           
+           (* Let AI try to play multiple cards in a burst *)
+           let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
+             if max_moves <= 0 || enh_state.base_state.game_over then
+               enh_state
+             else
+               match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
+               | Some ai_move ->
+                  (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
+                   | Ok new_state ->
+                      let state_with_draw = auto_draw_until_full new_state "Player2" in
+                      let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
+                      ai_play_all state_after_stuck (max_moves - 1)
+                   | Error _ -> enh_state)
+               | None -> enh_state
+           in
+           
+           let final_state = ai_play_all state_with_draws 1 in
+           let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+             (List.length final_state.base_state.player1_hand)
+             (List.length final_state.base_state.player1_stock)
+             (List.length final_state.base_state.player2_hand)
+             (List.length final_state.base_state.player2_stock)
+             final_state.base_state.game_over in
+           
+           let updated_model = if final_state.base_state.game_over then
+             (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
+               (match final_state.base_state.winner with
+                | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
+                | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
+                | None -> "None") in
+              match final_state.base_state.winner with
+              | Some Hw2_speed_logic.Player.Player1 -> 
+                { model with
+                  enhanced_state = final_state
+                ; selected_card = None
+                ; game_message = "YOU WIN! All cards played!"
+                }
+              | Some Hw2_speed_logic.Player.Player2 ->
+                { model with
+                  enhanced_state = final_state
+                ; selected_card = None
+                ; game_message = "AI WINS! AI was too fast!"
+                }
+              | None ->
                  { model with
                    enhanced_state = final_state
                  ; selected_card = None
-                 ; game_message = "YOU WIN! All cards played!"
-                 }
-               | Some Hw2_speed_logic.Player.Player2 ->
-                 { model with
-                   enhanced_state = final_state
-                 ; selected_card = None
-                 ; game_message = "AI WINS! AI was too fast!"
-                 }
-               | None ->
-                  { model with
-                    enhanced_state = final_state
-                  ; selected_card = None
-                  ; game_message = "Game Over!"
-                  })
-            else
-              { model with
-                enhanced_state = final_state
-              ; selected_card = model.selected_card
-              ; game_message = model.game_message
-              }
-            in
-            (* Auto-save after AI move *)
-            LocalStorage.save updated_model;
+                 ; game_message = "Game Over!"
+                 })
+           else
+             { model with
+               enhanced_state = final_state
+             ; selected_card = model.selected_card
+             ; game_message = model.game_message
+             }
+           in
+           (* Auto-save after AI move *)
+           LocalStorage.save updated_model;
             updated_model
        | _ -> 
           (* Not on game screen, game not started, or multiplayer - don't run AI *)
@@ -881,55 +881,55 @@ module Components = struct
                 [ Node.div
                     ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
                     [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
-                    ; Node.input
-                        ~attrs:
-                          [ Attr.create "type" "email"
-                          ; Attr.create "value" model.login_email
+                ; Node.input
+                    ~attrs:
+                      [ Attr.create "type" "email"
+                      ; Attr.create "value" model.login_email
                           ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
-                          ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
-                          ]
+                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
+                      ]
                         ()
-                    ]
-                ; Node.div
+                ]
+            ; Node.div
                     ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
                     [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Password" ]
-                    ; Node.input
-                        ~attrs:
-                          [ Attr.create "type" "password"
-                          ; Attr.create "value" model.login_password
+                ; Node.input
+                    ~attrs:
+                      [ Attr.create "type" "password"
+                      ; Attr.create "value" model.login_password
                           ; Attr.create "form" "login-form-id"
                           ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
-                          ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
-                          ]
+                      ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
+                      ]
                         ()
-                    ]
-                ; Node.div
+                ]
+            ; Node.div
                     ~attrs:[ Attr.create "style" "margin: 20px 0 10px 0; display: flex; gap: 10px;" ]
-                    [ Node.button
-                        ~attrs:
+                [ Node.button
+                    ~attrs:
                           [ Attr.create "type" "button"
                           ; on_click (fun _ -> inject Action.Sign_in)
                           ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
-                          ]
-                        [ Node.text "Sign In" ]
-                    ; Node.button
-                        ~attrs:
+                      ]
+                        [ Node.text "✅ Sign In" ]
+                ; Node.button
+                    ~attrs:
                           [ Attr.create "type" "button"
                           ; on_click (fun _ -> inject Action.Sign_up)
-                          ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
+                          ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
                           ]
-                        [ Node.text "Sign Up" ]
+                        [ Node.text "📝 Sign Up" ]
                     ]
                 ; Node.div
-                    ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
-                    [ Node.text "or" ]
+                    ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px; font-weight: bold;" ]
+                    [ Node.text "━━━ or ━━━" ]
                 ; Node.button
                     ~attrs:
                       [ Attr.create "type" "button"
                       ; on_click (fun _ -> inject Action.Sign_in_with_google)
-                      ; Attr.create "style" "width: 100%; padding: 12px; cursor: pointer; background: white; color: #333; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px;"
+                      ; Attr.create "style" "width: 100%; padding: 14px; cursor: pointer; background: white; color: #333; border: 2px solid rgba(0,0,0,0.1); border-radius: 8px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
                       ]
-                    [ Node.span ~attrs:[ Attr.create "style" "font-size: 20px;" ] [ Node.text "G" ]
+                    [ Node.span ~attrs:[ Attr.create "style" "font-size: 24px; font-weight: bold; background: linear-gradient(45deg, #4285F4, #EA4335, #FBBC05, #34A853); -webkit-background-clip: text; -webkit-text-fill-color: transparent;" ] [ Node.text "G" ]
                     ; Node.text "Sign in with Google"
                     ]
                 ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." || String.equal model.game_message "Signing in with Google...") then
