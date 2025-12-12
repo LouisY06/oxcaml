@@ -873,9 +873,9 @@ module Components = struct
           Node.div
         ~attrs:[ Attr.create "class" "login-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
         [ Node.div
-            ~attrs:[ Attr.create "class" "login-form"; Attr.create "id" "login-form-id"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
-            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #333;" ] [ Node.text "Speed Card Game" ]
-            ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 20px; color: #666; font-size: 18px;" ] [ Node.text "Sign In / Sign Up" ]
+            ~attrs:[ Attr.create "class" "login-form"; Attr.create "id" "login-form-id"; Attr.create "style" "padding: 40px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; background: rgba(255,255,255,0.95); box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
+            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 10px; color: #333; font-size: 32px;" ] [ Node.text "🎮 Speed Card Game" ]
+            ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #666; font-size: 18px; font-weight: normal;" ] [ Node.text "Sign In / Sign Up" ]
             ; Node.div
                 ~attrs:[ Attr.create "role" "form"; Attr.create "style" "margin: 0;" ]
                 [ Node.div
