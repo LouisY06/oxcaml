@@ -630,6 +630,72 @@
         // AI updates every 2 seconds automatically!
         console.log('Speed Card Game - AI plays continuously via Bonsai Clock!');
         console.log('Offline support enabled via Service Worker');
+        
+        // Add direct button click listeners for debugging
+        // Wait for DOM to be ready
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, setting up button click listeners...');
+            
+            // Use MutationObserver to watch for button creation
+            const observer = new MutationObserver(function(mutations) {
+                const signUpButton = document.getElementById('sign-up-button');
+                const signInButton = document.getElementById('sign-in-button');
+                
+                if (signUpButton && !signUpButton.dataset.listenerAdded) {
+                    console.log('Found sign-up button, adding click listener...');
+                    signUpButton.addEventListener('click', function(e) {
+                        console.log('*** JAVASCRIPT: Sign Up button clicked directly! ***');
+                        console.log('Event:', e);
+                        console.log('Button:', signUpButton);
+                    });
+                    signUpButton.dataset.listenerAdded = 'true';
+                }
+                
+                if (signInButton && !signInButton.dataset.listenerAdded) {
+                    console.log('Found sign-in button, adding click listener...');
+                    signInButton.addEventListener('click', function(e) {
+                        console.log('*** JAVASCRIPT: Sign In button clicked directly! ***');
+                        console.log('Event:', e);
+                        console.log('Button:', signInButton);
+                    });
+                    signInButton.dataset.listenerAdded = 'true';
+                }
+            });
+            
+            // Start observing
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+            
+            // Also check immediately after a delay
+            setTimeout(function() {
+                const signUpButton = document.getElementById('sign-up-button');
+                const signInButton = document.getElementById('sign-in-button');
+                if (signUpButton) {
+                    console.log('Sign-up button found on initial check');
+                    if (!signUpButton.dataset.listenerAdded) {
+                        signUpButton.addEventListener('click', function(e) {
+                            console.log('*** JAVASCRIPT: Sign Up button clicked directly! ***');
+                        });
+                        signUpButton.dataset.listenerAdded = 'true';
+                    }
+                } else {
+                    console.log('Sign-up button NOT found on initial check');
+                }
+                if (signInButton) {
+                    console.log('Sign-in button found on initial check');
+                    if (!signInButton.dataset.listenerAdded) {
+                        signInButton.addEventListener('click', function(e) {
+                            console.log('*** JAVASCRIPT: Sign In button clicked directly! ***');
+                        });
+                        signInButton.dataset.listenerAdded = 'true';
+                    }
+                } else {
+                    console.log('Sign-in button NOT found on initial check');
+                }
+            }, 2000);
+        });
     </script>
 </body>
 </html>
