@@ -50,20 +50,33 @@ Replace:
 - `YOUR_MESSAGING_SENDER_ID` with your messaging sender ID
 - `YOUR_APP_ID` with your app ID
 
-## 6. Set Up Firestore Security Rules (Optional but Recommended)
+## 6. Set Up Firestore Security Rules (REQUIRED for Multiplayer)
 
-For production, update your Firestore security rules:
+**IMPORTANT**: You must set up these security rules for multiplayer to work!
+
+In Firebase Console:
+1. Go to **Firestore Database** > **Rules**
+2. Update the rules to:
 
 ```javascript
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Matchmaking collection
-    match /matchmaking/{matchId} {
-      allow read, write: if request.auth != null;
+    // Players collection - user can read/write their own stats
+    match /players/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Matches collection
+    // Matchmaking collection - authenticated users can create and read matchmaking requests
+    match /matchmaking/{matchId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+    
+    // Matches collection - players in the match can read/write
     match /matches/{matchId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null 
@@ -72,6 +85,8 @@ service cloud.firestore {
   }
 }
 ```
+
+3. Click **Publish** to save the rules
 
 ## 7. Build and Test
 
