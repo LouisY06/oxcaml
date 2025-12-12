@@ -909,8 +909,8 @@ module Components = struct
                     ~attrs:
                           [ Attr.create "type" "button"
                           ; on_click (fun _ -> inject Action.Sign_in)
-                          ; Attr.create "style" "flex: 1; padding: 12px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: bold;"
-                      ]
+                          ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
+                          ]
                         [ Node.text "✅ Sign In" ]
                 ; Node.button
                     ~attrs:
