@@ -349,15 +349,20 @@ let sync_game_state_to_firestore (match_id : string) (player_id : string) (state
 
 let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
   let open Deferred.Let_syntax in
+  let () = Stdio.printf "*** START_MATCHMAKING CALLED with uid=%s ***\n%!" uid in
   (* Create a matchmaking request in Firestore *)
   let matchmaking_id = Printf.sprintf "mm_%s_%d" uid (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)) in
+  let () = Stdio.printf "*** Creating matchmaking document: %s ***\n%!" matchmaking_id in
   let data = [
     ("playerId", Firebase_bindings.Firestore.string_to_js uid)
   ; ("status", Firebase_bindings.Firestore.string_to_js "waiting")
   ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
   ] in
+  let () = Stdio.printf "*** Calling Firestore.set_doc for matchmaking collection ***\n%!" in
   let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" matchmaking_id data in
+  let () = Stdio.printf "*** Matchmaking document created successfully ***\n%!" in
   (* Query for other waiting players *)
+  let () = Stdio.printf "*** Querying for waiting players... ***\n%!" in
   let%bind waiting_players_result = 
     Firebase_bindings.Firestore.query_collection 
       "matchmaking" 
@@ -365,8 +370,10 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
       "==" 
       (Firebase_bindings.Firestore.string_to_js "waiting")
   in
+  let () = Stdio.printf "*** Query completed, processing results... ***\n%!" in
   match waiting_players_result with
   | Ok docs ->
+    let () = Stdio.printf "*** Query returned %d waiting players ***\n%!" (List.length docs) in
     (* Find a player that's not us *)
     let opponent_opt = 
       List.find_map docs ~f:(fun doc ->
@@ -375,24 +382,32 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
           let doc_data = Js.Unsafe.get doc (Js.string "data") in
           if Js.Optdef.test doc_data then
             let player_id = Js.to_string (Js.Unsafe.get doc_data (Js.string "playerId")) in
+            let () = Stdio.printf "*** Found waiting player: %s (doc_id: %s) ***\n%!" player_id doc_id in
             (* Not our own matchmaking request and not already matched *)
             if not (String.equal player_id uid) && not (String.equal doc_id matchmaking_id) then
+              let () = Stdio.printf "*** This is a valid opponent! ***\n%!" in
               Some doc
             else
+              let () = Stdio.printf "*** Skipping (our own request or same doc) ***\n%!" in
               None
           else
             None
-        with _ -> None
+        with e -> 
+          let () = Stdio.printf "*** Error processing doc: %s ***\n%!" (Exn.to_string e) in
+          None
       )
     in
     (match opponent_opt with
      | Some opponent_doc ->
+       let () = Stdio.printf "*** OPPONENT FOUND! Creating match... ***\n%!" in
        (* Found an opponent! Create a match *)
        let opponent_data = Js.Unsafe.get opponent_doc (Js.string "data") in
        let opponent_id = Js.to_string (Js.Unsafe.get opponent_data (Js.string "playerId")) in
        let opponent_matchmaking_id = Js.to_string (Js.Unsafe.get opponent_doc (Js.string "id")) in
+       let () = Stdio.printf "*** Opponent ID: %s, Opponent matchmaking ID: %s ***\n%!" opponent_id opponent_matchmaking_id in
        (* Create match document *)
        let match_id = Printf.sprintf "match_%s_%s" uid opponent_id in
+       let () = Stdio.printf "*** Match ID: %s ***\n%!" match_id in
        let match_data = [
          ("player1", Firebase_bindings.Firestore.string_to_js uid)
        ; ("player2", Firebase_bindings.Firestore.string_to_js opponent_id)
@@ -414,28 +429,56 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
        ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
        Deferred.return ()
      | None ->
+       let () = Stdio.printf "*** No opponent found yet - setting up listener on matchmaking document: %s ***\n%!" matchmaking_id in
        (* No opponent found yet - set up listener to watch for matches *)
        (* Set up listener on our own matchmaking document *)
        ignore (Firebase_bindings.Firestore.on_snapshot "matchmaking" matchmaking_id (fun data_opt ->
+         let () = Stdio.printf "*** Matchmaking listener fired! ***\n%!" in
          match data_opt with
-         | None -> ()
+         | None -> 
+           let () = Stdio.printf "*** Matchmaking listener: document is None ***\n%!" in
+           ()
          | Some data ->
            let status = Js.to_string (Js.Unsafe.get data (Js.string "status")) in
+           let () = Stdio.printf "*** Matchmaking listener: status = %s ***\n%!" status in
            if String.equal status "matched" then
+             let () = Stdio.printf "*** MATCHED! Getting match document... ***\n%!" in
              let match_id = Js.to_string (Js.Unsafe.get data (Js.string "matchId")) in
+             let () = Stdio.printf "*** Match ID from listener: %s ***\n%!" match_id in
              (* Get match document to find opponent *)
              ignore (Deferred.bind ~f:(function
                | Ok (Some match_data) ->
+                 let () = Stdio.printf "*** Got match document, extracting opponent... ***\n%!" in
                  let player1 = Js.to_string (Js.Unsafe.get match_data (Js.string "player1")) in
                  let player2 = Js.to_string (Js.Unsafe.get match_data (Js.string "player2")) in
                  let opponent_id = if String.equal player1 uid then player2 else player1 in
-                 ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
+                 let () = Stdio.printf "*** Injecting Match_found action: match_id=%s, opponent_id=%s ***\n%!" match_id opponent_id in
+                 let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id }) in
+                 (* Schedule with setTimeout to ensure Bonsai processes it *)
+                 let setTimeout = Js.Unsafe.global##.setTimeout in
+                 if Js.Optdef.test setTimeout then
+                   ignore (Js.Unsafe.fun_call setTimeout [|
+                     Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+                     Js.Unsafe.inject (Js.number_of_float 10.0)
+                   |])
+                 else
+                   Ui_effect.Expert.handle effect;
                  Deferred.return ()
-               | _ -> Deferred.return ()) (Firebase_bindings.Firestore.get_doc "matches" match_id))
+               | Ok None ->
+                 let () = Stdio.printf "*** Match document not found! ***\n%!" in
+                 Deferred.return ()
+               | Error e ->
+                 let () = Stdio.printf "*** Error getting match document: %s ***\n%!" e in
+                 Deferred.return ()) (Firebase_bindings.Firestore.get_doc "matches" match_id))
+           else
+             let () = Stdio.printf "*** Status is not 'matched', ignoring... ***\n%!" in
+             ()
        ));
+       let () = Stdio.printf "*** Listener set up, waiting for opponent... ***\n%!" in
        Deferred.return ())
   | Error err ->
-    let () = Stdio.printf "Matchmaking query failed: %s\n%!" err in
+    let () = Stdio.printf "*** ERROR: Matchmaking query failed: %s ***\n%!" err in
+    let () = Stdio.printf "*** This might be due to Firestore security rules not being set up! ***\n%!" in
     Deferred.return ()
 
 let setup_firestore_listener (match_id : string) (player_id : string) (inject : Action.t -> unit Effect.t) : Js.Unsafe.any option =
@@ -1577,11 +1620,17 @@ let app =
             | _ -> new_model)
          | Select_multiplayer, _ ->
            (* Start matchmaking when multiplayer is selected *)
+           let () = Stdio.printf "*** STATE MACHINE: Select_multiplayer action - starting matchmaking ***\n%!" in
            (match new_model.auth_state with
             | Model.Authenticated { uid; _ } ->
-              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+              let () = Stdio.printf "*** User is authenticated, uid=%s, calling start_matchmaking ***\n%!" uid in
+              ignore (Deferred.bind ~f:(fun () -> 
+                let () = Stdio.printf "*** start_matchmaking completed ***\n%!" in
+                Deferred.return ()) (start_matchmaking uid inject));
               new_model
-            | _ -> new_model)
+            | Model.NotAuthenticated ->
+              let () = Stdio.printf "*** User is NOT authenticated, cannot start matchmaking ***\n%!" in
+              new_model)
          | _ -> new_model))
         in
         let () = Stdio.printf "*** STATE MACHINE: Returning final_model with screen: %s, auth_state: %s ***\n%!"
