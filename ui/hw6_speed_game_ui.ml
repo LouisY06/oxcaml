@@ -873,11 +873,11 @@ module Components = struct
           Node.div
         ~attrs:[ Attr.create "class" "login-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
         [ Node.div
-            ~attrs:[ Attr.create "class" "login-form"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
+            ~attrs:[ Attr.create "class" "login-form"; Attr.create "id" "login-form-id"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
             [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #333;" ] [ Node.text "Speed Card Game" ]
             ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 20px; color: #666; font-size: 18px;" ] [ Node.text "Sign In / Sign Up" ]
-            ; Node.form
-                ~attrs:[ Attr.create "style" "margin: 0;" ]
+            ; Node.div
+                ~attrs:[ Attr.create "role" "form"; Attr.create "style" "margin: 0;" ]
                 [ Node.div
                     ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
                     [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
@@ -897,6 +897,7 @@ module Components = struct
                         ~attrs:
                           [ Attr.create "type" "password"
                           ; Attr.create "value" model.login_password
+                          ; Attr.create "form" "login-form-id"
                           ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
                           ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
                           ]
