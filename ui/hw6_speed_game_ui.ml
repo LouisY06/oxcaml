@@ -1305,7 +1305,7 @@ let app =
          in
          initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
-        let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s ***\n%!"
+        let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s, current auth_state: %s ***\n%!"
           (match action with
            | Action.Sign_in -> "Sign_in"
            | Action.Sign_up -> "Sign_up"
@@ -1316,6 +1316,14 @@ let app =
               | Firebase_bindings.Auth.SignedIn { email; _ } -> 
                 Printf.sprintf "Auth_state_changed(SignedIn: %s)" (Option.value email ~default:"no email"))
            | _ -> "Other")
+          (match _model.screen with
+           | LoginScreen -> "LoginScreen"
+           | ProfileScreen -> "ProfileScreen"
+           | ModeSelectionScreen -> "ModeSelectionScreen"
+           | GameScreen -> "GameScreen")
+          (match _model.auth_state with
+           | NotAuthenticated -> "NotAuthenticated"
+           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
           (match _model.screen with
            | LoginScreen -> "LoginScreen"
            | ProfileScreen -> "ProfileScreen"
