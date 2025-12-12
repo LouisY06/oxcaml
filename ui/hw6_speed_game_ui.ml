@@ -918,14 +918,24 @@ module Components = struct
                 [ Node.button
                     ~attrs:
                           [ Attr.create "type" "button"
-                          ; on_click (fun _ -> inject Action.Sign_in)
+                          ; on_click (fun _ -> 
+                              let () = Stdio.printf "*** BUTTON CLICKED: Sign In button was clicked! ***\n%!" in
+                              let effect = inject Action.Sign_in in
+                              let () = Stdio.printf "*** Effect created from inject Action.Sign_in ***\n%!" in
+                              effect)
+                          ; Attr.create "id" "sign-in-button"
                           ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
                           ]
                         [ Node.text "✅ Sign In" ]
                 ; Node.button
                     ~attrs:
                           [ Attr.create "type" "button"
-                          ; on_click (fun _ -> inject Action.Sign_up)
+                          ; on_click (fun _ -> 
+                              let () = Stdio.printf "*** BUTTON CLICKED: Sign Up button was clicked! ***\n%!" in
+                              let effect = inject Action.Sign_up in
+                              let () = Stdio.printf "*** Effect created from inject Action.Sign_up ***\n%!" in
+                              effect)
+                          ; Attr.create "id" "sign-up-button"
                           ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
                           ]
                         [ Node.text "📝 Sign Up" ]
