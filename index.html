@@ -37,20 +37,26 @@
         // ============================================================
         window.firebaseSignIn = async function(email, password) {
             try {
+                console.log('firebaseSignIn called with email:', email);
                 const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                console.log('Sign in successful! User:', userCredential.user.uid);
                 return { success: true, user: userCredential.user };
             } catch (error) {
+                console.error('Sign in error:', error.message);
                 return { success: false, error: error.message };
             }
         };
         
         window.firebaseCreateUser = async function(email, password) {
             try {
+                console.log('firebaseCreateUser called with email:', email);
                 const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                console.log('Sign up successful! User:', userCredential.user.uid);
                 return { success: true, user: userCredential.user };
             } catch (error) {
+                console.error('Sign up error:', error.message);
                 return { success: false, error: error.message };
             }
         };

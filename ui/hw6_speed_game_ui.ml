@@ -1277,17 +1277,27 @@ let app =
         (match action with
          | Sign_in ->
            (* Handle sign in errors *)
+           let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
            ignore (Deferred.bind ~f:(function
-             | Ok _ -> Deferred.return ()
+             | Ok _user -> 
+               let () = Stdio.printf "Sign in successful! User authenticated.\n%!" in
+               (* Auth state change will be detected by onAuthStateChanged callback *)
+               Deferred.return ()
              | Error msg -> 
+               let () = Stdio.printf "Sign in failed: %s\n%!" msg in
                ignore (inject (Action.Update_login_error msg));
                Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password));
            new_model
          | Sign_up ->
            (* Handle sign up errors *)
+           let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
            ignore (Deferred.bind ~f:(function
-             | Ok _ -> Deferred.return ()
+             | Ok _user -> 
+               let () = Stdio.printf "Sign up successful! User created and authenticated.\n%!" in
+               (* Auth state change will be detected by onAuthStateChanged callback *)
+               Deferred.return ()
              | Error msg -> 
+               let () = Stdio.printf "Sign up failed: %s\n%!" msg in
                ignore (inject (Action.Update_login_error msg));
                Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
            new_model
