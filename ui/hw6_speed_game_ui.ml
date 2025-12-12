@@ -1649,12 +1649,26 @@ let app =
         let () = Stdio.printf "Setting up Firebase auth callback in lifecycle\n%!" in
         let callback auth_state =
           let () = Stdio.printf "Firebase auth callback - injecting Auth_state_changed\n%!" in
-          (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
-          (* This is critical because the callback is called from JavaScript land *)
+          (* Schedule the effect using setTimeout to ensure Bonsai can process it *)
+          (* This is critical because the callback is called from JavaScript land, especially after Google redirect *)
           let effect = inject (Action.Auth_state_changed auth_state) in
-          let () = Stdio.printf "Effect created, handling it now...\n%!" in
-          Ui_effect.Expert.handle effect;
-          let () = Stdio.printf "Effect handled successfully\n%!" in
+          let () = Stdio.printf "Effect created, scheduling with setTimeout...\n%!" in
+          let setTimeout = Js.Unsafe.global##.setTimeout in
+          if Js.Optdef.test setTimeout then
+            let callback_js = Js.wrap_callback (fun _ ->
+              let () = Stdio.printf "*** setTimeout callback - handling Auth_state_changed effect (from Firebase callback) ***\n%!" in
+              Ui_effect.Expert.handle effect;
+              let () = Stdio.printf "Effect handled successfully in setTimeout callback\n%!" in
+              ()) in
+            ignore (Js.Unsafe.fun_call setTimeout [|
+              Js.Unsafe.inject callback_js;
+              Js.Unsafe.inject (Js.number_of_float 10.0) (* 10ms delay *)
+            |])
+          else
+            (* Fallback - handle immediately if setTimeout not available *)
+            let () = Stdio.printf "setTimeout not available, handling immediately\n%!" in
+            Ui_effect.Expert.handle effect;
+          let () = Stdio.printf "Effect scheduled successfully\n%!" in
           ()
         in
         try
