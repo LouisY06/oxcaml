@@ -791,7 +791,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
        | _ -> 
           (* Not on game screen, game not started, or multiplayer - don't run AI *)
           model)
-;;
+  
 
 (* Bonsai components for mapping game logic to HTML + CSS *)
 module Components = struct
