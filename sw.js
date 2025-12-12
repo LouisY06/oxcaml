@@ -61,18 +61,16 @@ self.addEventListener('install', (event) => {
 // This event fires when the service worker becomes active.
 // We use the Cache API to delete old cache versions to free up space.
 self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating - FORCE CLEARING ALL CACHES');
   event.waitUntil(
     // caches.keys() returns all cache names
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          // Delete any cache that doesn't match the current version
-          // This prevents old cached files from taking up space
-          if (cacheName !== CACHE_NAME) {
-            console.log('Service Worker: Deleting old cache', cacheName);
-            // caches.delete() removes the specified cache
-            return caches.delete(cacheName);
-          }
+          // Delete ALL caches to force fresh load
+          console.log('Service Worker: DELETING cache', cacheName);
+          // caches.delete() removes the specified cache
+          return caches.delete(cacheName);
         })
       );
     })
