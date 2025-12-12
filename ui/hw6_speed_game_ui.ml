@@ -1435,7 +1435,8 @@ let app =
                new_model.login_email (String.length new_model.login_password) in
              let deferred_result = Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password in
              let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
-             ignore (Deferred.bind ~f:(function
+             (* Fire and forget - handle result in callback *)
+             let handle_result = function
                | Ok user -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN IN SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
@@ -1446,16 +1447,41 @@ let app =
                       Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email")
                     | Firebase_bindings.Auth.SignedOut -> "SignedOut") in
                  let () = Stdio.printf "*** Creating and handling effect ***\n%!" in
-                 (* Inject the action - use Ui_effect.Expert.handle to force execution *)
+                 (* Schedule the effect using JavaScript setTimeout to ensure it runs on the next tick *)
+                 (* This is critical because we're in a Deferred callback and need to let Bonsai's event loop process it *)
                  let effect = inject (Action.Auth_state_changed user_info) in
-                 Ui_effect.Expert.handle effect;
-                 let () = Stdio.printf "*** Effect handled, should transition to ModeSelectionScreen ***\n%!" in
-                 Deferred.return ()
+                 let setTimeout = Js.Unsafe.global##.setTimeout in
+                 if Js.Optdef.test setTimeout then
+                   let callback = Js.wrap_callback (fun _ ->
+                     let () = Stdio.printf "*** setTimeout callback - handling Auth_state_changed effect ***\n%!" in
+                     Ui_effect.Expert.handle effect;
+                     let () = Stdio.printf "*** Effect handled in setTimeout callback ***\n%!" in
+                     ()) in
+                   ignore (Js.Unsafe.fun_call setTimeout [| 
+                     Js.Unsafe.inject callback;
+                     Js.Unsafe.inject (Js.number_of_float 10.0) (* 10ms delay to ensure Bonsai is ready *)
+                   |])
+                 else
+                   (* Fallback - handle immediately if setTimeout not available *)
+                   let () = Stdio.printf "*** setTimeout not available, handling immediately ***\n%!" in
+                   Ui_effect.Expert.handle effect;
+                 let () = Stdio.printf "*** Effect scheduled, should transition to ModeSelectionScreen ***\n%!" in
+                 ()
                | Error msg -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN IN FAILED: %s ***\n%!" msg in
                  let effect = inject (Action.Update_login_error msg) in
-                 Ui_effect.Expert.handle effect;
-                 Deferred.return ()) deferred_result);
+                 (* Schedule error effect using setTimeout *)
+                 let setTimeout = Js.Unsafe.global##.setTimeout in
+                 if Js.Optdef.test setTimeout then
+                   ignore (Js.Unsafe.fun_call setTimeout [| 
+                     Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+                     Js.Unsafe.inject (Js.number_of_float 10.0)
+                   |])
+                 else
+                   Ui_effect.Expert.handle effect;
+                 ()
+             in
+             ignore (Deferred.bind deferred_result ~f:(fun result -> handle_result result; Deferred.return ()));
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
              (* Don't clear password on error - user might want to try again *)
              new_model
@@ -1475,7 +1501,7 @@ let app =
                new_model.login_email (String.length new_model.login_password) in
              let deferred_result = Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password in
              let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
-             ignore (Deferred.bind ~f:(function
+             let (_ : unit Deferred.t) = Deferred.bind deferred_result ~f:(function
                | Ok user -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
@@ -1486,16 +1512,36 @@ let app =
                       Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email")
                     | Firebase_bindings.Auth.SignedOut -> "SignedOut") in
                  let () = Stdio.printf "*** Creating and handling effect ***\n%!" in
-                 (* Use Ui_effect.Expert.handle to force execution *)
+                 (* Schedule the effect using JavaScript setTimeout to ensure it runs on the next tick *)
                  let effect = inject (Action.Auth_state_changed user_info) in
-                 Ui_effect.Expert.handle effect;
-                 let () = Stdio.printf "*** Effect handled, should transition to ModeSelectionScreen ***\n%!" in
+                 let setTimeout = Js.Unsafe.global##.setTimeout in
+                 if Js.Optdef.test setTimeout then
+                   let callback = Js.wrap_callback (fun _ ->
+                     let () = Stdio.printf "*** setTimeout callback - handling Auth_state_changed effect (sign up) ***\n%!" in
+                     Ui_effect.Expert.handle effect;
+                     let () = Stdio.printf "*** Effect handled in setTimeout callback ***\n%!" in
+                     ()) in
+                   ignore (Js.Unsafe.fun_call setTimeout [| 
+                     Js.Unsafe.inject callback;
+                     Js.Unsafe.inject (Js.number_of_float 10.0) (* 10ms delay to ensure Bonsai is ready *)
+                   |])
+                 else
+                   Ui_effect.Expert.handle effect;
+                 let () = Stdio.printf "*** Effect scheduled, should transition to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP FAILED: %s ***\n%!" msg in
                  let effect = inject (Action.Update_login_error msg) in
-                 Ui_effect.Expert.handle effect;
-                 Deferred.return ()) deferred_result);
+                 (* Schedule error effect using setTimeout *)
+                 let setTimeout = Js.Unsafe.global##.setTimeout in
+                 if Js.Optdef.test setTimeout then
+                   ignore (Js.Unsafe.fun_call setTimeout [| 
+                     Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+                     Js.Unsafe.inject (Js.number_of_float 10.0)
+                   |])
+                 else
+                   Ui_effect.Expert.handle effect;
+                 Deferred.return ()) in
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
              (* Don't clear password on error - user might want to try again or sign in *)
              new_model
