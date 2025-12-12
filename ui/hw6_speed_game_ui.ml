@@ -1310,7 +1310,11 @@ let app =
            | Action.Sign_in -> "Sign_in"
            | Action.Sign_up -> "Sign_up"
            | Action.Sign_in_with_google -> "Sign_in_with_google"
-           | Action.Auth_state_changed _ -> "Auth_state_changed"
+           | Action.Auth_state_changed auth_state -> 
+             (match auth_state with
+              | Firebase_bindings.Auth.SignedOut -> "Auth_state_changed(SignedOut)"
+              | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+                Printf.sprintf "Auth_state_changed(SignedIn: %s)" (Option.value email ~default:"no email"))
            | _ -> "Other")
           (match _model.screen with
            | LoginScreen -> "LoginScreen"
@@ -1319,12 +1323,15 @@ let app =
            | GameScreen -> "GameScreen")
         in
         let new_model = apply_action action _model in
-        let () = Stdio.printf "*** STATE MACHINE: After apply_action, new_model.screen: %s ***\n%!"
+        let () = Stdio.printf "*** STATE MACHINE: After apply_action, new_model.screen: %s, auth_state: %s ***\n%!"
           (match new_model.screen with
            | LoginScreen -> "LoginScreen"
            | ProfileScreen -> "ProfileScreen"
            | ModeSelectionScreen -> "ModeSelectionScreen"
            | GameScreen -> "GameScreen")
+          (match new_model.auth_state with
+           | NotAuthenticated -> "NotAuthenticated"
+           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
         in
         (* Handle async auth operations and errors *)
         let final_model = (match action with
@@ -1387,6 +1394,16 @@ let app =
               ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (load_player_stats uid inject));
               new_model
             | _ -> new_model)
+         | Auth_state_changed _ ->
+           (* Auth_state_changed is handled in apply_action, just return the new_model *)
+           let () = Stdio.printf "*** STATE MACHINE: Auth_state_changed action - new_model.screen is %s ***\n%!"
+             (match new_model.screen with
+              | LoginScreen -> "LoginScreen"
+              | ProfileScreen -> "ProfileScreen"
+              | ModeSelectionScreen -> "ModeSelectionScreen"
+              | GameScreen -> "GameScreen")
+           in
+           new_model
          | _ -> 
         (* Set up Firestore listener when entering multiplayer mode *)
         (match action, new_model.game_mode with
