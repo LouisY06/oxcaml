@@ -726,68 +726,68 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
           if model.enhanced_state.base_state.game_over then
             model
           else
-           (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
-           let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
-           
-           (* Let AI try to play multiple cards in a burst *)
-           let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
-             if max_moves <= 0 || enh_state.base_state.game_over then
-               enh_state
-             else
-               match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
-               | Some ai_move ->
-                  (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
-                   | Ok new_state ->
-                      let state_with_draw = auto_draw_until_full new_state "Player2" in
-                      let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
-                      ai_play_all state_after_stuck (max_moves - 1)
-                   | Error _ -> enh_state)
-               | None -> enh_state
-           in
-           
-           let final_state = ai_play_all state_with_draws 1 in
-           let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
-             (List.length final_state.base_state.player1_hand)
-             (List.length final_state.base_state.player1_stock)
-             (List.length final_state.base_state.player2_hand)
-             (List.length final_state.base_state.player2_stock)
-             final_state.base_state.game_over in
-           
-           let updated_model = if final_state.base_state.game_over then
-             (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
-               (match final_state.base_state.winner with
-                | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
-                | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
-                | None -> "None") in
-              match final_state.base_state.winner with
-              | Some Hw2_speed_logic.Player.Player1 -> 
-                { model with
-                  enhanced_state = final_state
-                ; selected_card = None
-                ; game_message = "YOU WIN! All cards played!"
-                }
-              | Some Hw2_speed_logic.Player.Player2 ->
-                { model with
-                  enhanced_state = final_state
-                ; selected_card = None
-                ; game_message = "AI WINS! AI was too fast!"
-                }
-              | None ->
+            (* Only auto-draw for AI, NOT for Player1! Player1 draws after playing. *)
+            let state_with_draws = auto_draw_until_full model.enhanced_state "Player2" in
+            
+            (* Let AI try to play multiple cards in a burst *)
+            let rec ai_play_all (enh_state : Hw2_speed_logic.Enhanced_game_state.t) max_moves =
+              if max_moves <= 0 || enh_state.base_state.game_over then
+                enh_state
+              else
+                match Hw2_speed_logic.Enhanced_game_state.ai_choose_move enh_state with
+                | Some ai_move ->
+                   (match Hw2_speed_logic.Enhanced_game_state.make_move enh_state ai_move "Player2" with
+                    | Ok new_state ->
+                       let state_with_draw = auto_draw_until_full new_state "Player2" in
+                       let state_after_stuck, _ = check_and_refresh_if_stuck state_with_draw in
+                       ai_play_all state_after_stuck (max_moves - 1)
+                    | Error _ -> enh_state)
+                | None -> enh_state
+            in
+            
+            let final_state = ai_play_all state_with_draws 1 in
+            let () = Stdio.printf "AI update - P1: hand=%d stock=%d, P2: hand=%d stock=%d, game_over=%b\n%!"
+              (List.length final_state.base_state.player1_hand)
+              (List.length final_state.base_state.player1_stock)
+              (List.length final_state.base_state.player2_hand)
+              (List.length final_state.base_state.player2_stock)
+              final_state.base_state.game_over in
+            
+            let updated_model = if final_state.base_state.game_over then
+              (let () = Stdio.printf "🏆 GAME OVER! Winner: %s\n%!"
+                (match final_state.base_state.winner with
+                 | Some Hw2_speed_logic.Player.Player1 -> "Player 1"
+                 | Some Hw2_speed_logic.Player.Player2 -> "Player 2"
+                 | None -> "None") in
+               match final_state.base_state.winner with
+               | Some Hw2_speed_logic.Player.Player1 -> 
                  { model with
                    enhanced_state = final_state
                  ; selected_card = None
-                 ; game_message = "Game Over!"
-                 })
-           else
-             { model with
-               enhanced_state = final_state
-             ; selected_card = model.selected_card
-             ; game_message = model.game_message
-             }
-           in
-           (* Auto-save after AI move *)
-           LocalStorage.save updated_model;
-           updated_model)
+                 ; game_message = "YOU WIN! All cards played!"
+                 }
+               | Some Hw2_speed_logic.Player.Player2 ->
+                 { model with
+                   enhanced_state = final_state
+                 ; selected_card = None
+                 ; game_message = "AI WINS! AI was too fast!"
+                 }
+               | None ->
+                  { model with
+                    enhanced_state = final_state
+                  ; selected_card = None
+                  ; game_message = "Game Over!"
+                  })
+            else
+              { model with
+                enhanced_state = final_state
+              ; selected_card = model.selected_card
+              ; game_message = model.game_message
+              }
+            in
+            (* Auto-save after AI move *)
+            LocalStorage.save updated_model;
+            updated_model
        | _ -> 
           (* Not on game screen, game not started, or multiplayer - don't run AI *)
           model)
