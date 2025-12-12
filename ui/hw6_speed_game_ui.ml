@@ -1271,9 +1271,12 @@ let app =
              (* Handle sign in errors *)
              let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
              ignore (Deferred.bind ~f:(function
-               | Ok _user -> 
-                 let () = Stdio.printf "Sign in successful! User authenticated. Waiting for auth state callback...\n%!" in
-                 (* Auth state change will be detected by onAuthStateChanged callback *)
+               | Ok user -> 
+                 let () = Stdio.printf "Sign in successful! User authenticated. Getting user info...\n%!" in
+                 (* Manually trigger auth state change since callback might not fire immediately *)
+                 let user_info = Firebase_bindings.Auth.get_user_info user in
+                 let () = Stdio.printf "User info retrieved, injecting Auth_state_changed action\n%!" in
+                 ignore (inject (Action.Auth_state_changed user_info));
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign in failed: %s\n%!" msg in
@@ -1288,9 +1291,12 @@ let app =
              (* Handle sign up errors *)
              let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
              ignore (Deferred.bind ~f:(function
-               | Ok _user -> 
-                 let () = Stdio.printf "Sign up successful! User created and authenticated. Waiting for auth state callback...\n%!" in
-                 (* Auth state change will be detected by onAuthStateChanged callback *)
+               | Ok user -> 
+                 let () = Stdio.printf "Sign up successful! User created and authenticated. Getting user info...\n%!" in
+                 (* Manually trigger auth state change since callback might not fire immediately *)
+                 let user_info = Firebase_bindings.Auth.get_user_info user in
+                 let () = Stdio.printf "User info retrieved, injecting Auth_state_changed action\n%!" in
+                 ignore (inject (Action.Auth_state_changed user_info));
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign up failed: %s\n%!" msg in
