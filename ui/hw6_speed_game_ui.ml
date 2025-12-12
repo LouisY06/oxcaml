@@ -1379,47 +1379,70 @@ let app =
          | Sign_in ->
            (* Only attempt sign-in if email and password are not empty *)
            if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
+             let () = Stdio.printf "Sign_in: Email or password is empty, skipping\n%!" in
              new_model (* Already handled validation in apply_action, just return model *)
            else
              (* Handle sign in errors *)
              let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
+             let () = Stdio.printf "*** CALLING Firebase sign_in_with_email_and_password NOW ***\n%!" in
+             let deferred_result = Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password in
+             let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
              ignore (Deferred.bind ~f:(function
                | Ok user -> 
-                 let () = Stdio.printf "*** SIGN IN SUCCESSFUL! ***\n%!" in
+                 let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN IN SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
-                 let () = Stdio.printf "*** User info retrieved, injecting Auth_state_changed action NOW ***\n%!" in
+                 let () = Stdio.printf "*** User info retrieved: %s ***\n%!" 
+                   (match user_info with
+                    | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+                      Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email")
+                    | Firebase_bindings.Auth.SignedOut -> "SignedOut") in
+                 let () = Stdio.printf "*** Creating and handling effect ***\n%!" in
                  (* Inject the action - use Ui_effect.Expert.handle to force execution *)
                  let effect = inject (Action.Auth_state_changed user_info) in
                  Ui_effect.Expert.handle effect;
-                 let () = Stdio.printf "*** Action injected and handled, should transition to ModeSelectionScreen ***\n%!" in
+                 let () = Stdio.printf "*** Effect handled, should transition to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
-                 let () = Stdio.printf "Sign in failed: %s\n%!" msg in
-                 ignore (inject (Action.Update_login_error msg));
-                 Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_email_and_password new_model.login_email new_model.login_password));
+                 let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN IN FAILED: %s ***\n%!" msg in
+                 let effect = inject (Action.Update_login_error msg) in
+                 Ui_effect.Expert.handle effect;
+                 Deferred.return ()) deferred_result);
+             let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
              new_model
          | Sign_up ->
            (* Only attempt sign-up if email and password are not empty *)
            if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
+             let () = Stdio.printf "Sign_up: Email or password is empty, skipping\n%!" in
              new_model (* Already handled validation in apply_action, just return model *)
            else
              (* Handle sign up errors *)
              let () = Stdio.printf "Sign_up action: attempting to create account with email=%s\n%!" new_model.login_email in
+             let () = Stdio.printf "*** CALLING Firebase create_user_with_email_and_password NOW ***\n%!" in
+             let deferred_result = Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password in
+             let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
              ignore (Deferred.bind ~f:(function
                | Ok user -> 
-                 let () = Stdio.printf "Sign up successful! User created and authenticated. Getting user info...\n%!" in
+                 let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
-                 let () = Stdio.printf "User info retrieved, injecting Auth_state_changed action\n%!" in
+                 let () = Stdio.printf "*** User info retrieved: %s ***\n%!" 
+                   (match user_info with
+                    | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+                      Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email")
+                    | Firebase_bindings.Auth.SignedOut -> "SignedOut") in
+                 let () = Stdio.printf "*** Creating and handling effect ***\n%!" in
                  (* Use Ui_effect.Expert.handle to force execution *)
                  let effect = inject (Action.Auth_state_changed user_info) in
                  Ui_effect.Expert.handle effect;
+                 let () = Stdio.printf "*** Effect handled, should transition to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
-                 let () = Stdio.printf "Sign up failed: %s\n%!" msg in
-                 ignore (inject (Action.Update_login_error msg));
-                 Deferred.return ()) (Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password));
+                 let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP FAILED: %s ***\n%!" msg in
+                 let effect = inject (Action.Update_login_error msg) in
+                 Ui_effect.Expert.handle effect;
+                 Deferred.return ()) deferred_result);
+             let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
              new_model
          | Sign_in_with_google ->
            (* Handle Google sign in - uses redirect, so page will navigate away *)
