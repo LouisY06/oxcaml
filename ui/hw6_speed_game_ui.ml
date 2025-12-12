@@ -532,8 +532,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         { model with game_message = "Creating account..." }
   
   | Sign_in_with_google ->
-      (* Google sign in will be handled in state machine callback with error handling *)
-      { model with game_message = "Signing in with Google..." }
+      (* Google sign in removed - do nothing *)
+      model
   
   | Update_login_error error_msg ->
       { model with game_message = error_msg }
@@ -961,19 +961,7 @@ module Components = struct
                           ]
                         [ Node.text "📝 Sign Up" ]
                     ]
-                ; Node.div
-                    ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px; font-weight: bold;" ]
-                    [ Node.text "━━━ or ━━━" ]
-                ; Node.button
-                    ~attrs:
-                      [ Attr.create "type" "button"
-                      ; on_click (fun _ -> inject Action.Sign_in_with_google)
-                      ; Attr.create "style" "width: 100%; padding: 14px; cursor: pointer; background: white; color: #333; border: 2px solid rgba(0,0,0,0.1); border-radius: 8px; font-size: 16px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
-                      ]
-                    [ Node.span ~attrs:[ Attr.create "style" "font-size: 24px; font-weight: bold; background: linear-gradient(45deg, #4285F4, #EA4335, #FBBC05, #34A853); -webkit-background-clip: text; -webkit-text-fill-color: transparent;" ] [ Node.text "G" ]
-                    ; Node.text "Sign in with Google"
-                    ]
-                ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account..." || String.equal model.game_message "Signing in with Google...") then
+                ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account...") then
                     Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
                   else if not (String.is_empty model.game_message) then
                     Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #ffebee; border-radius: 5px; text-align: center; color: #c62828;" ] [ Node.text model.game_message ]
@@ -1549,23 +1537,7 @@ let app =
              (* Don't clear password on error - user might want to try again or sign in *)
              new_model
          | Sign_in_with_google ->
-           (* Handle Google sign in - uses redirect, so page will navigate away *)
-           let () = Stdio.printf "*** STATE MACHINE: Sign_in_with_google handler - calling Firebase ***\n%!" in
-           ignore (Deferred.bind ~f:(function
-             | Ok _ -> 
-               let () = Stdio.printf "*** Google sign-in returned Ok (unexpected with redirect) ***\n%!" in
-               Deferred.return () (* Should not happen with redirect *)
-             | Error msg -> 
-               let () = Stdio.printf "*** Google sign-in returned Error: %s ***\n%!" msg in
-               (* "Redirect in progress" is expected, don't show as error *)
-               if String.equal msg "Redirect in progress" then
-                 let () = Stdio.printf "*** Redirect in progress - this is expected, page will redirect ***\n%!" in
-                 Deferred.return ()
-               else
-                 let () = Stdio.printf "*** Google sign-in error (not redirect): %s - showing error to user ***\n%!" msg in
-                 let effect = inject (Action.Update_login_error msg) in
-                 Ui_effect.Expert.handle effect;
-                 Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_google ()));
+           (* Google sign in removed - do nothing *)
            new_model
          | Load_player_stats ->
            (* Load player stats from Firestore *)
