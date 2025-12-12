@@ -1490,8 +1490,8 @@ let app =
         final_model)
   in
   
-  (* Set up Firebase auth state listener - use a ref to ensure it only runs once *)
-  let auth_callback_setup = ref false in
+  (* Note: Firebase auth callback is now set up using Bonsai.Edge.lifecycle below *)
+  (* This ensures it's properly initialized and the inject function remains valid *)
   
 (**************************************************)
   (* Periodic AI update every 2000ms (2 seconds) - AI plays 1 card every 2 seconds *)
@@ -1504,31 +1504,40 @@ let app =
        inject Action.Trigger_periodic_update)
   in
 
+  (* Set up Firebase auth state listener using Bonsai.Edge.lifecycle *)
+  (* This ensures the callback is set up once when the component activates *)
+  (* and the inject function is properly captured and remains valid *)
+  let%sub () =
+    let callback = 
+      let%map inject = inject in
+      fun auth_state ->
+        let () = Stdio.printf "Firebase auth callback - injecting Auth_state_changed\n%!" in
+        (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
+        (* This is critical because the callback is called from JavaScript land *)
+        let effect = inject (Action.Auth_state_changed auth_state) in
+        let () = Stdio.printf "Effect created, handling it now...\n%!" in
+        Ui_effect.Expert.handle effect;
+        let () = Stdio.printf "Effect handled successfully\n%!" in
+        ()
+    in
+    Bonsai.Edge.lifecycle
+      ~on_activate:(let%map callback = callback in
+        fun () ->
+          let () = Stdio.printf "Setting up Firebase auth callback in lifecycle\n%!" in
+          try
+            Firebase_bindings.Auth.on_auth_state_changed callback;
+            let () = Stdio.printf "Firebase auth callback registered successfully\n%!" in
+            ()
+          with
+          | e -> 
+            let () = Stdio.printf "Error setting up auth callback in lifecycle: %s\n%!" (Exn.to_string e) in
+            () (* Firebase not ready yet, will retry on next activation *)
+      )
+      ()
+  in
+
   let%arr model = model
   and inject = inject in
-  (* Set up auth callback once (using ref to prevent multiple setups) *)
-  let () =
-    if not !auth_callback_setup then
-      try
-        let callback auth_state =
-          (* Inject auth state change action *)
-          let () = Stdio.printf "Injecting Auth_state_changed action\n%!" in
-          (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
-          (* This is critical because the callback is called from JavaScript land *)
-          let effect = inject (Action.Auth_state_changed auth_state) in
-          let () = Stdio.printf "Effect created, handling it now...\n%!" in
-          Ui_effect.Expert.handle effect;
-          let () = Stdio.printf "Effect handled successfully\n%!" in
-          ()
-        in
-        let () = Stdio.printf "Setting up Firebase auth callback\n%!" in
-        Firebase_bindings.Auth.on_auth_state_changed callback;
-        auth_callback_setup := true
-      with
-      | e -> 
-        let () = Stdio.printf "Error setting up auth callback: %s\n%!" (Exn.to_string e) in
-        () (* Firebase not ready yet, will retry on next render *)
-  in
   let inject_action action = inject action in
   Components.view model inject_action
 ;;
