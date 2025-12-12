@@ -57,6 +57,8 @@ module Model = struct
       ; player_stats : player_stats option (* Player statistics, loaded from Firestore *)
       ; lobby_code : string (* Lobby code for joining games *)
       ; created_lobby_code : string option (* Lobby code of the lobby we created (for display) *)
+      ; websocket : (Websocket_bindings.websocket option [@sexp.opaque] [@compare.ignore] [@equal.ignore]) (* WebSocket connection *)
+      ; ws_connected : bool (* Whether WebSocket is connected *)
       }
   [@@deriving sexp, compare, equal]
 
@@ -83,6 +85,8 @@ module Model = struct
       ; player_stats = None
       ; lobby_code = ""
       ; created_lobby_code = None
+      ; websocket = None
+      ; ws_connected = false
       }
    ;;
 end
@@ -119,6 +123,11 @@ module Action = struct
     | Go_to_profile (* Go to profile screen *)
     | Load_player_stats (* Load player stats from Firestore *)
     | Player_stats_loaded of Model.player_stats (* Stats loaded from Firestore *)
+    | Ws_connect (* Connect to WebSocket server *)
+    | Ws_connected (* WebSocket connection established *)
+    | Ws_disconnected (* WebSocket connection lost *)
+    | Ws_message of (Js.Unsafe.any [@sexp.opaque] [@compare.ignore]) (* WebSocket message received *)
+    | Ws_error of string (* WebSocket error *)
   [@@deriving sexp, compare]
 end
 
@@ -364,6 +373,10 @@ let generate_lobby_code () : string =
     String.get chars (Random.int len)
   ) in
   code
+
+(* Convert a string to a deterministic seed for RNG *)
+let string_to_seed (s : string) : int =
+  String.fold s ~init:0 ~f:(fun acc c -> (acc * 31 + Char.to_int c) land 0x3FFFFFFF)
 
 (* Create a lobby with a code *)
 let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
@@ -855,7 +868,76 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Player_stats_loaded stats ->
       { model with player_stats = Some stats }
-  
+
+  | Ws_connect ->
+      (* WebSocket connection will be initiated in state machine callback *)
+      model
+
+  | Ws_connected ->
+      let () = Stdio.printf "*** WebSocket connected! ***\n%!" in
+      { model with ws_connected = true; game_message = "Connected to server" }
+
+  | Ws_disconnected ->
+      let () = Stdio.printf "*** WebSocket disconnected! ***\n%!" in
+      { model with ws_connected = false; game_message = "Disconnected from server. Reconnecting..." }
+
+  | Ws_message msg ->
+      (* Handle WebSocket messages *)
+      let msg_type = Websocket_bindings.get_string_field msg "type" in
+      (match msg_type with
+       | Some "lobby_created" ->
+           let lobby_code = Websocket_bindings.get_string_field msg "lobbyCode" |> Option.value ~default:"" in
+           let () = Stdio.printf "*** WS: Lobby created: %s ***\n%!" lobby_code in
+           { model with
+             screen = GameScreen
+           ; created_lobby_code = Some lobby_code
+           ; game_message = Printf.sprintf "Waiting for opponent... Lobby Code: %s" lobby_code
+           ; game_started = false
+           }
+       | Some "match_found" ->
+           let match_id = Websocket_bindings.get_string_field msg "matchId" |> Option.value ~default:"" in
+           let player_id = Websocket_bindings.get_string_field msg "playerId" |> Option.value ~default:"" in
+           let opponent_id = Websocket_bindings.get_string_field msg "opponentId" |> Option.value ~default:"" in
+           let is_host = Websocket_bindings.get_bool_field msg "isHost" |> Option.value ~default:false in
+           let () = Stdio.printf "*** WS: Match found! match_id=%s, isHost=%b ***\n%!" match_id is_host in
+           (* Create game state with deterministic seed *)
+           let seed = string_to_seed match_id in
+           let () = Stdio.printf "*** Creating game state with seed=%d from match_id ***\n%!" seed in
+           let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
+           { model with
+             game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+           ; enhanced_state = new_enhanced_state
+           ; game_started = false
+           ; game_message = "Match found! Waiting for game to start..."
+           }
+       | Some "game_state_update" ->
+           let () = Stdio.printf "*** WS: Game state update received ***\n%!" in
+           (* Parse and apply game state from opponent *)
+           (try
+              let game_state_obj = Js.Unsafe.get msg (Js.string "gameState") in
+              let game_state_str = Js.to_string (Js.Unsafe.global##.JSON##stringify game_state_obj) in
+              (* Parse the S-expression *)
+              let sexp = Parsexp.Single.parse_string_exn game_state_str in
+              let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
+              { model with enhanced_state = new_enhanced_state }
+            with e ->
+              let () = Stdio.printf "*** Error parsing game state: %s ***\n%!" (Exn.to_string e) in
+              model)
+       | Some "error" ->
+           let error_msg = Websocket_bindings.get_string_field msg "message" |> Option.value ~default:"Unknown error" in
+           let () = Stdio.printf "*** WS Error: %s ***\n%!" error_msg in
+           { model with game_message = error_msg }
+       | Some "opponent_disconnected" ->
+           let () = Stdio.printf "*** WS: Opponent disconnected ***\n%!" in
+           { model with game_message = "Opponent disconnected" }
+       | _ ->
+           let () = Stdio.printf "*** WS: Unknown message type ***\n%!" in
+           model)
+
+  | Ws_error err ->
+      let () = Stdio.printf "*** WebSocket error: %s ***\n%!" err in
+      { model with game_message = Printf.sprintf "Connection error: %s" err }
+
   | Select_single_player ->
       let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
       { model with
@@ -1743,7 +1825,12 @@ let app =
             | Action.Join_lobby -> "Join_lobby"
             | Action.Update_lobby_code _ -> "Update_lobby_code"
             | Action.Lobby_created _ -> "Lobby_created"
-            | Action.Lobby_joined _ -> "Lobby_joined")
+            | Action.Lobby_joined _ -> "Lobby_joined"
+            | Action.Ws_connect -> "Ws_connect"
+            | Action.Ws_connected -> "Ws_connected"
+            | Action.Ws_disconnected -> "Ws_disconnected"
+            | Action.Ws_message _ -> "Ws_message"
+            | Action.Ws_error _ -> "Ws_error")
         in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"

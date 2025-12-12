@@ -34,4 +34,4 @@ val close : websocket -> unit
 
 (* JSON helpers *)
 val get_string_field : Js.Unsafe.any -> string -> string option
-val get_bool_field : Js.Unsafe.any -> bool -> bool option
+val get_bool_field : Js.Unsafe.any -> string -> bool option
