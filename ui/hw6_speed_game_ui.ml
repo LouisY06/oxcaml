@@ -485,8 +485,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (* Clear error message when user starts typing (but keep loading messages) *)
       let cleared_message = 
         if String.equal model.game_message "Signing in..." 
-        || String.equal model.game_message "Creating account..." 
-        || String.equal model.game_message "Signing in with Google..." then
+        || String.equal model.game_message "Creating account..." then
           model.game_message
         else
           ""
@@ -497,8 +496,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (* Clear error message when user starts typing (but keep loading messages) *)
       let cleared_message = 
         if String.equal model.game_message "Signing in..." 
-        || String.equal model.game_message "Creating account..." 
-        || String.equal model.game_message "Signing in with Google..." then
+        || String.equal model.game_message "Creating account..." then
           model.game_message
         else
           ""
