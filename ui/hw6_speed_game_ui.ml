@@ -502,9 +502,13 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Sign_up ->
       (* Validate email and password before attempting sign up *)
+      let () = Stdio.printf "*** Sign_up action received - email='%s', password length=%d ***\n%!" 
+        model.login_email (String.length model.login_password) in
       if String.is_empty model.login_email || String.is_empty model.login_password then
+        let () = Stdio.printf "*** Sign_up: Validation failed - empty email or password ***\n%!" in
         { model with game_message = "Please enter both email and password." }
       else
+        let () = Stdio.printf "*** Sign_up: Validation passed, setting 'Creating account...' message ***\n%!" in
         (* Sign up will be handled in state machine callback with error handling *)
         (* DON'T clear password here - state machine callback needs it! *)
         { model with game_message = "Creating account..." }
@@ -1324,7 +1328,9 @@ let app =
            | Action.Update_login_password _ -> "Update_login_password"
            | Action.Update_login_error _ -> "Update_login_error"
            | Action.Sign_in -> "Sign_in"
-           | Action.Sign_up -> "Sign_up"
+           | Action.Sign_up -> 
+             let () = Stdio.printf "*** RAW ACTION TYPE: Sign_up detected! ***\n%!" in
+             "Sign_up"
            | Action.Sign_in_with_google -> "Sign_in_with_google"
            | Action.Sign_out -> "Sign_out"
            | Action.Auth_state_changed _ -> "Auth_state_changed"
