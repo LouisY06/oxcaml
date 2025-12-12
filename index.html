@@ -103,13 +103,14 @@
         window.setFirebaseAuthCallback = function(callback) {
             console.log('Setting up Firebase auth callback...');
             // Import onAuthStateChanged from Firebase auth module
-            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(({ onAuthStateChanged, getRedirectResult }) => {
+            import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(async ({ onAuthStateChanged, getRedirectResult }) => {
                 console.log('Firebase auth module imported, setting up listener');
                 
-                // Check for redirect result FIRST (for Google sign-in)
+                // Check for redirect result FIRST and WAIT for it to complete
                 // This must be done before setting up onAuthStateChanged to avoid timing issues
                 console.log('=== Checking for redirect result... ===');
-                getRedirectResult(auth).then((result) => {
+                try {
+                    const result = await getRedirectResult(auth);  // Use await to wait for completion
                     console.log('=== getRedirectResult completed ===');
                     console.log('Result object:', result);
                     console.log('Result.user:', result ? result.user : 'no result');
@@ -127,11 +128,13 @@
                     } else {
                         console.log('ℹ️ No redirect result - user probably did not use Google sign-in');
                     }
-                }).catch((error) => {
+                } catch (error) {
                     console.log('❌ Redirect result error:', error.code, error.message);
-                });
+                }
                 
-                // Set up auth state listener - this fires immediately with current user if signed in
+                // THEN set up the ongoing auth state listener
+                // This fires for future auth state changes
+                console.log('Now setting up onAuthStateChanged listener...');
                 const unsubscribe = onAuthStateChanged(auth, (user) => {
                     console.log('Auth state changed, user:', user ? user.email : 'signed out');
                     console.log('Calling auth callback with user:', user ? 'authenticated' : 'null');
