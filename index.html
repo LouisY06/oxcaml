@@ -288,34 +288,26 @@
         <!-- App will mount here -->
     </div>
     <script>
-        // CRITICAL: Clear saved game IMMEDIATELY, before ANYTHING else
-        console.log('=== STEP 1: CLEARING ALL SAVED GAMES ===');
+        // CRITICAL: Clear saved game state (but preserve Firebase's redirect state)
+        // Only clear the specific game state key, not all localStorage
+        // Firebase uses localStorage/sessionStorage to store redirect results
+        console.log('=== Clearing saved game state (preserving Firebase state) ===');
         try {
-            // Clear ALL localStorage items to be safe
-            localStorage.clear();
-            console.log('=== STEP 2: ALL LOCALSTORAGE CLEARED ===');
-            // Double-check speed_game_state is gone
+            // Only remove the game state, not all localStorage
+            localStorage.removeItem('speed_game_state');
+            console.log('Game state cleared from localStorage');
+            // Verify it's gone
             if (localStorage.getItem('speed_game_state')) {
-                console.error('ERROR: Saved game still exists after clear!');
+                console.error('ERROR: Saved game still exists after removal!');
             } else {
-                console.log('=== STEP 3: VERIFIED - NO SAVED GAME IN LOCALSTORAGE ===');
+                console.log('Verified: No saved game in localStorage');
             }
         } catch (e) {
             console.error('ERROR: Could not clear saved game:', e);
         }
         
-        // Also unregister service worker to force fresh load
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for(let registration of registrations) {
-                    registration.unregister().then(function(success) {
-                        if (success) {
-                            console.log('=== SERVICE WORKER UNREGISTERED - FORCING FRESH LOAD ===');
-                        }
-                    });
-                }
-            });
-        }
+        // NOTE: Service worker unregistration removed - it was interfering with Firebase redirects
+        // Service workers are needed for Firebase's redirect flow to work properly
     </script>
 
     <!-- Include the compiled Bonsai JavaScript -->
