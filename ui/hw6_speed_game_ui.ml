@@ -394,28 +394,41 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
   ignore (Firebase_bindings.Firestore.on_snapshot "lobbies" lobby_code (fun data_opt ->
     let () = Stdio.printf "*** Lobby listener fired! ***\n%!" in
     match data_opt with
-    | None -> ()
+    | None -> 
+      let () = Stdio.printf "*** Lobby listener: data is None (document deleted or permission denied) ***\n%!" in
+      ()
     | Some data ->
-      let status = Js.to_string (Js.Unsafe.get data (Js.string "status")) in
-      let player2_raw = Js.Unsafe.get data (Js.string "player2") in
-      let player2 = if Js.Optdef.test player2_raw then Js.to_string player2_raw else "" in
-      let () = Stdio.printf "*** Lobby status: %s, player2: %s ***\n%!" status player2 in
-      if String.equal status "ready" && not (String.is_empty player2) then
-        (* Opponent joined! Create match *)
-        let match_id = Printf.sprintf "match_%s_%s" uid player2 in
-        let () = Stdio.printf "*** Opponent joined! Creating match: %s ***\n%!" match_id in
-        let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id = player2 }) in
-        let setTimeout = Js.Unsafe.global##.setTimeout in
-        if Js.Optdef.test setTimeout then
-          ignore (Js.Unsafe.fun_call setTimeout [|
-            Js.Unsafe.inject (Js.wrap_callback (fun _ ->
-              let () = Stdio.printf "*** Handling Match_found effect from lobby ***\n%!" in
-              Ui_effect.Expert.handle effect;
-              ()));
-            Js.Unsafe.inject (Js.number_of_float 10.0)
-          |])
+      (* Check if data is actually valid before accessing properties *)
+      try
+        let status_raw = Js.Unsafe.get data (Js.string "status") in
+        if Js.Optdef.test status_raw then
+          let status = Js.to_string status_raw in
+          let player2_raw = Js.Unsafe.get data (Js.string "player2") in
+          let player2 = if Js.Optdef.test player2_raw then Js.to_string player2_raw else "" in
+          let () = Stdio.printf "*** Lobby status: %s, player2: %s ***\n%!" status player2 in
+          if String.equal status "ready" && not (String.is_empty player2) then
+            (* Opponent joined! Create match *)
+            let match_id = Printf.sprintf "match_%s_%s" uid player2 in
+            let () = Stdio.printf "*** Opponent joined! Creating match: %s ***\n%!" match_id in
+            let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id = player2 }) in
+            let setTimeout = Js.Unsafe.global##.setTimeout in
+            if Js.Optdef.test setTimeout then
+              ignore (Js.Unsafe.fun_call setTimeout [|
+                Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+                  let () = Stdio.printf "*** Handling Match_found effect from lobby ***\n%!" in
+                  Ui_effect.Expert.handle effect;
+                  ()));
+                Js.Unsafe.inject (Js.number_of_float 10.0)
+              |])
+            else
+              Ui_effect.Expert.handle effect
         else
-          Ui_effect.Expert.handle effect
+          let () = Stdio.printf "*** Lobby listener: status field not found or invalid ***\n%!" in
+          ()
+      with
+      | e ->
+        let () = Stdio.printf "*** Lobby listener error: %s ***\n%!" (Exn.to_string e) in
+        ()
   ));
   Deferred.return ()
 
