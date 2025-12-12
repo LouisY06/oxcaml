@@ -306,6 +306,67 @@
             console.error('ERROR: Could not clear saved game:', e);
         }
         
+        // DEBUG: Log all storage to see what Firebase is storing
+        console.log('=== DEBUGGING STORAGE ===');
+        console.log('Current URL:', window.location.href);
+        console.log('Origin:', window.location.origin);
+        console.log('Path:', window.location.pathname);
+        
+        // Check Local Storage
+        console.log('=== LOCAL STORAGE ===');
+        try {
+            const localStorageKeys = Object.keys(localStorage);
+            console.log('Local Storage keys count:', localStorageKeys.length);
+            if (localStorageKeys.length > 0) {
+                console.log('Local Storage keys:', localStorageKeys);
+                localStorageKeys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    console.log(`  ${key}:`, value ? (value.length > 100 ? value.substring(0, 100) + '...' : value) : 'null');
+                });
+            } else {
+                console.log('Local Storage is EMPTY');
+            }
+        } catch (e) {
+            console.error('Error reading Local Storage:', e);
+        }
+        
+        // Check Session Storage
+        console.log('=== SESSION STORAGE ===');
+        try {
+            const sessionStorageKeys = Object.keys(sessionStorage);
+            console.log('Session Storage keys count:', sessionStorageKeys.length);
+            if (sessionStorageKeys.length > 0) {
+                console.log('Session Storage keys:', sessionStorageKeys);
+                sessionStorageKeys.forEach(key => {
+                    const value = sessionStorage.getItem(key);
+                    console.log(`  ${key}:`, value ? (value.length > 100 ? value.substring(0, 100) + '...' : value) : 'null');
+                });
+            } else {
+                console.log('Session Storage is EMPTY');
+            }
+        } catch (e) {
+            console.error('Error reading Session Storage:', e);
+        }
+        
+        // Check IndexedDB
+        console.log('=== INDEXEDDB ===');
+        if ('indexedDB' in window) {
+            indexedDB.databases().then(databases => {
+                console.log('IndexedDB databases count:', databases.length);
+                if (databases.length > 0) {
+                    databases.forEach(db => {
+                        console.log(`  Database: ${db.name}, version: ${db.version}`);
+                    });
+                } else {
+                    console.log('No IndexedDB databases found');
+                }
+            }).catch(e => {
+                console.error('Error reading IndexedDB:', e);
+            });
+        } else {
+            console.log('IndexedDB not supported');
+        }
+        
         // NOTE: Service worker unregistration removed - it was interfering with Firebase redirects
         // Service workers are needed for Firebase's redirect flow to work properly
     </script>
