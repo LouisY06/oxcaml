@@ -1389,9 +1389,10 @@ let app =
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
                  let () = Stdio.printf "*** User info retrieved, injecting Auth_state_changed action NOW ***\n%!" in
-                 (* Inject the action - Bonsai will process it *)
-                 ignore (inject (Action.Auth_state_changed user_info));
-                 let () = Stdio.printf "*** Action injected, should transition to ModeSelectionScreen ***\n%!" in
+                 (* Inject the action - use Ui_effect.Expert.handle to force execution *)
+                 let effect = inject (Action.Auth_state_changed user_info) in
+                 Ui_effect.Expert.handle effect;
+                 let () = Stdio.printf "*** Action injected and handled, should transition to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign in failed: %s\n%!" msg in
@@ -1411,7 +1412,9 @@ let app =
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
                  let () = Stdio.printf "User info retrieved, injecting Auth_state_changed action\n%!" in
-                 ignore (inject (Action.Auth_state_changed user_info));
+                 (* Use Ui_effect.Expert.handle to force execution *)
+                 let effect = inject (Action.Auth_state_changed user_info) in
+                 Ui_effect.Expert.handle effect;
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign up failed: %s\n%!" msg in
@@ -1510,7 +1513,13 @@ let app =
         let callback auth_state =
           (* Inject auth state change action *)
           let () = Stdio.printf "Injecting Auth_state_changed action\n%!" in
-          ignore (inject (Action.Auth_state_changed auth_state))
+          (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
+          (* This is critical because the callback is called from JavaScript land *)
+          let effect = inject (Action.Auth_state_changed auth_state) in
+          let () = Stdio.printf "Effect created, handling it now...\n%!" in
+          Ui_effect.Expert.handle effect;
+          let () = Stdio.printf "Effect handled successfully\n%!" in
+          ()
         in
         let () = Stdio.printf "Setting up Firebase auth callback\n%!" in
         Firebase_bindings.Auth.on_auth_state_changed callback;
