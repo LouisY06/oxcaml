@@ -1436,8 +1436,8 @@ let app =
                  Ui_effect.Expert.handle effect;
                  Deferred.return ()) deferred_result);
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
-             (* Clear password after using it for security *)
-             { new_model with login_password = "" }
+             (* Don't clear password on error - user might want to try again *)
+             new_model
          | Sign_up ->
            (* Only attempt sign-up if email and password are not empty *)
            let () = Stdio.printf "*** STATE MACHINE: Sign_up handler - email='%s', password length=%d ***\n%!" 
@@ -1476,8 +1476,8 @@ let app =
                  Ui_effect.Expert.handle effect;
                  Deferred.return ()) deferred_result);
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
-             (* Clear password after using it for security *)
-             { new_model with login_password = "" }
+             (* Don't clear password on error - user might want to try again or sign in *)
+             new_model
          | Sign_in_with_google ->
            (* Handle Google sign in - uses redirect, so page will navigate away *)
            ignore (Deferred.bind ~f:(function
