@@ -87,19 +87,46 @@ module Auth = struct
     (* Check if user is null/undefined (signed out) *)
     (* In js_of_ocaml, we check for null by comparing to Js.null *)
     try
+      let () = Stdio.printf "*** get_user_info: Checking user object... ***\n%!" in
       (* Try to access uid - if it fails, user is null/undefined *)
-      let uid = Js.to_string (Js.Unsafe.get user (Js.string "uid")) in
+      let uid_raw = Js.Unsafe.get user (Js.string "uid") in
+      let () = Stdio.printf "*** get_user_info: Got uid_raw, checking if defined... ***\n%!" in
+      let uid = 
+        if Js.Optdef.test uid_raw then
+          let uid_str = Js.to_string uid_raw in
+          let () = Stdio.printf "*** get_user_info: uid = %s ***\n%!" uid_str in
+          uid_str
+        else
+          let () = Stdio.printf "*** get_user_info: uid is undefined, raising exception ***\n%!" in
+          raise (Failure "uid is undefined")
+      in
       let email_opt =
-        let email = Js.Unsafe.get user (Js.string "email") in
-        if Js.Optdef.test email then Some (Js.to_string email) else None
+        try
+          let email = Js.Unsafe.get user (Js.string "email") in
+          if Js.Optdef.test email then 
+            let email_str = Js.to_string email in
+            let () = Stdio.printf "*** get_user_info: email = %s ***\n%!" email_str in
+            Some email_str
+          else 
+            let () = Stdio.printf "*** get_user_info: email is undefined ***\n%!" in
+            None
+        with e -> 
+          let () = Stdio.printf "*** get_user_info: Exception getting email: %s ***\n%!" (Exn.to_string e) in
+          None
       in
       let display_name_opt =
-        let name = Js.Unsafe.get user (Js.string "displayName") in
-        if Js.Optdef.test name then Some (Js.to_string name) else None
+        try
+          let name = Js.Unsafe.get user (Js.string "displayName") in
+          if Js.Optdef.test name then Some (Js.to_string name) else None
+        with _ -> None
       in
+      let () = Stdio.printf "*** get_user_info: Returning SignedIn with uid=%s, email=%s ***\n%!" 
+        uid (match email_opt with Some e -> e | None -> "None") in
       SignedIn { uid; email = email_opt; display_name = display_name_opt }
     with
-    | _ -> SignedOut (* If accessing properties fails, user is null/undefined (signed out) *)
+    | e -> 
+      let () = Stdio.printf "*** get_user_info: Exception caught: %s, returning SignedOut ***\n%!" (Exn.to_string e) in
+      SignedOut (* If accessing properties fails, user is null/undefined (signed out) *)
   
   (* Helper to convert JS promise to Deferred *)
   (* Since Deferred.t is just a JavaScript Promise, we can chain it directly *)
