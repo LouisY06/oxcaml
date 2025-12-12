@@ -1508,30 +1508,28 @@ let app =
   (* This ensures the callback is set up once when the component activates *)
   (* and the inject function is properly captured and remains valid *)
   let%sub () =
-    let callback = 
-      let%map inject = inject in
-      fun auth_state ->
-        let () = Stdio.printf "Firebase auth callback - injecting Auth_state_changed\n%!" in
-        (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
-        (* This is critical because the callback is called from JavaScript land *)
-        let effect = inject (Action.Auth_state_changed auth_state) in
-        let () = Stdio.printf "Effect created, handling it now...\n%!" in
-        Ui_effect.Expert.handle effect;
-        let () = Stdio.printf "Effect handled successfully\n%!" in
-        ()
-    in
     Bonsai.Edge.lifecycle
-      ~on_activate:(let%map callback = callback in
+      ~on_activate:(let%map inject = inject in
         fun () ->
           let () = Stdio.printf "Setting up Firebase auth callback in lifecycle\n%!" in
+          let callback auth_state =
+            let () = Stdio.printf "Firebase auth callback - injecting Auth_state_changed\n%!" in
+            (* Use Ui_effect.Expert.handle to force the effect to execute immediately *)
+            (* This is critical because the callback is called from JavaScript land *)
+            let effect = inject (Action.Auth_state_changed auth_state) in
+            let () = Stdio.printf "Effect created, handling it now...\n%!" in
+            Ui_effect.Expert.handle effect;
+            let () = Stdio.printf "Effect handled successfully\n%!" in
+            ()
+          in
           try
             Firebase_bindings.Auth.on_auth_state_changed callback;
             let () = Stdio.printf "Firebase auth callback registered successfully\n%!" in
-            ()
+            Effect.Ignore
           with
           | e -> 
             let () = Stdio.printf "Error setting up auth callback in lifecycle: %s\n%!" (Exn.to_string e) in
-            () (* Firebase not ready yet, will retry on next activation *)
+            Effect.Ignore (* Firebase not ready yet, will retry on next activation *)
       )
       ()
   in
