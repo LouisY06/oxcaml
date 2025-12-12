@@ -1305,11 +1305,45 @@ let app =
          in
          initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
+        (* Debug: Print the raw action to see what we're getting *)
+        let () = Stdio.printf "*** RAW ACTION TYPE: %s ***\n%!" 
+          (match action with
+           | Action.New_game -> "New_game"
+           | Action.Select_card _ -> "Select_card"
+           | Action.Play_on_pile _ -> "Play_on_pile"
+           | Action.AI_move_continuous -> "AI_move_continuous"
+           | Action.Trigger_periodic_update -> "Trigger_periodic_update"
+           | Action.Load_saved_game -> "Load_saved_game"
+           | Action.Update_login_email _ -> "Update_login_email"
+           | Action.Update_login_password _ -> "Update_login_password"
+           | Action.Update_login_error _ -> "Update_login_error"
+           | Action.Sign_in -> "Sign_in"
+           | Action.Sign_up -> "Sign_up"
+           | Action.Sign_in_with_google -> "Sign_in_with_google"
+           | Action.Sign_out -> "Sign_out"
+           | Action.Auth_state_changed _ -> "Auth_state_changed"
+           | Action.Start_game -> "Start_game"
+           | Action.Start_matchmaking -> "Start_matchmaking"
+           | Action.Cancel_matchmaking -> "Cancel_matchmaking"
+           | Action.Match_found _ -> "Match_found"
+           | Action.Select_single_player -> "Select_single_player"
+           | Action.Select_multiplayer -> "Select_multiplayer"
+           | Action.Go_to_profile -> "Go_to_profile"
+           | Action.Go_to_mode_selection -> "Go_to_mode_selection"
+           | Action.Load_player_stats -> "Load_player_stats"
+           | Action.Player_stats_loaded _ -> "Player_stats_loaded")
+        in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"
           | Action.Sign_up -> "Sign_up"
           | Action.Sign_in_with_google -> "Sign_in_with_google"
           | Action.Auth_state_changed auth_state -> 
+            let () = Stdio.printf "*** MATCHED Auth_state_changed! auth_state=%s ***\n%!"
+              (match auth_state with
+               | Firebase_bindings.Auth.SignedOut -> "SignedOut"
+               | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+                 Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email"))
+            in
             (match auth_state with
              | Firebase_bindings.Auth.SignedOut -> "Auth_state_changed(SignedOut)"
              | Firebase_bindings.Auth.SignedIn { email; _ } -> 
@@ -1400,14 +1434,18 @@ let app =
               ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (load_player_stats uid inject));
               new_model
             | _ -> new_model)
-         | Auth_state_changed _ ->
+         | Auth_state_changed auth_state ->
            (* Auth_state_changed is handled in apply_action - the screen should already be updated *)
-           let () = Stdio.printf "*** STATE MACHINE: Auth_state_changed action processed - new_model.screen is %s ***\n%!"
+           let () = Stdio.printf "*** STATE MACHINE: Auth_state_changed action in final_model match - new_model.screen is %s, auth_state=%s ***\n%!"
              (match new_model.screen with
               | LoginScreen -> "LoginScreen"
               | ProfileScreen -> "ProfileScreen"
               | ModeSelectionScreen -> "ModeSelectionScreen"
               | GameScreen -> "GameScreen")
+             (match auth_state with
+              | Firebase_bindings.Auth.SignedOut -> "SignedOut"
+              | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+                Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email"))
            in
            (* Return new_model directly - don't process through _ case *)
            new_model
