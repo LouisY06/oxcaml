@@ -65,21 +65,21 @@ module Model = struct
    ; win_rate = 0.0
    }
 
-   let initial =
-      { screen = LoginScreen
-      ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
-      ; selected_card = None
-      ; game_message = ""
-      ; auth_state = NotAuthenticated
-      ; game_mode = SinglePlayer
-      ; login_email = ""
-      ; login_password = ""
-      ; matchmaking_status = "idle"
-      ; firestore_unsubscribe = None
-      ; game_started = false
-      ; player_stats = None
-      }
-   ;;
+  let initial =
+     { screen = GameScreen
+     ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
+     ; selected_card = None
+     ; game_message = ""
+     ; auth_state = NotAuthenticated
+     ; game_mode = SinglePlayer
+     ; login_email = ""
+     ; login_password = ""
+     ; matchmaking_status = "idle"
+     ; firestore_unsubscribe = None
+     ; game_started = false
+     ; player_stats = None
+     }
+  ;;
 end
 
 module Action = struct
@@ -1255,7 +1255,7 @@ end
 (* FIXED Bonsai App Initialization *)
 (* ================================= *)
 let app =
-  let () = Stdio.printf "INITIALIZING APP - Starting with LoginScreen\n%!" in
+  let () = Stdio.printf "INITIALIZING APP - Starting with GameScreen\n%!" in
   let%sub model, inject =
     Bonsai.state_machine0
       (module Model)
