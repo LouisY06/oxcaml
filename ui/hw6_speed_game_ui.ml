@@ -66,7 +66,7 @@ module Model = struct
    }
 
   let initial =
-     { screen = GameScreen
+     { screen = LoginScreen
      ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
      ; selected_card = None
      ; game_message = ""
@@ -568,11 +568,10 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          ; screen = LoginScreen
          }
        | Model.Authenticated _ ->
-         let () = Stdio.printf "Setting screen to ProfileScreen\n%!" in
-         (* Load player stats will be triggered in state machine callback *)
+         let () = Stdio.printf "Setting screen to GameScreen after login\n%!" in
          { model with
            auth_state = new_auth_state
-         ; screen = ProfileScreen
+         ; screen = GameScreen
          })
   
   | Load_player_stats ->
@@ -1255,7 +1254,7 @@ end
 (* FIXED Bonsai App Initialization *)
 (* ================================= *)
 let app =
-  let () = Stdio.printf "INITIALIZING APP - Starting with GameScreen\n%!" in
+  let () = Stdio.printf "INITIALIZING APP - Starting with LoginScreen\n%!" in
   let%sub model, inject =
     Bonsai.state_machine0
       (module Model)
