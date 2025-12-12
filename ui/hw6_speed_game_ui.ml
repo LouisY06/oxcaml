@@ -16,6 +16,9 @@ module Deferred = Firebase_bindings.Deferred
 
 module Firebase_bindings = Firebase_bindings
 
+(* WebSocket server URL - change to production URL when deployed *)
+let websocket_url = "ws://localhost:8080"
+
 module Model = struct
    type screen =
      | LoginScreen
@@ -377,6 +380,74 @@ let generate_lobby_code () : string =
 (* Convert a string to a deterministic seed for RNG *)
 let string_to_seed (s : string) : int =
   String.fold s ~init:0 ~f:(fun acc c -> (acc * 31 + Char.to_int c) land 0x3FFFFFFF)
+
+(* WebSocket helper functions *)
+let init_websocket (inject : Action.t -> unit Effect.t) : Websocket_bindings.websocket =
+  let () = Stdio.printf "*** Initializing WebSocket connection to %s ***\n%!" websocket_url in
+  let ws = Websocket_bindings.create_websocket websocket_url in
+
+  (* Set up event handlers *)
+  Websocket_bindings.on_open ws (fun () ->
+    let () = Stdio.printf "*** WebSocket opened! ***\n%!" in
+    Ui_effect.Expert.handle (inject Action.Ws_connected)
+  );
+
+  Websocket_bindings.on_message ws (fun msg ->
+    let () = Stdio.printf "*** WebSocket message received ***\n%!" in
+    Ui_effect.Expert.handle (inject (Action.Ws_message msg))
+  );
+
+  Websocket_bindings.on_close ws (fun () ->
+    let () = Stdio.printf "*** WebSocket closed! ***\n%!" in
+    Ui_effect.Expert.handle (inject Action.Ws_disconnected)
+  );
+
+  Websocket_bindings.on_error ws (fun err ->
+    let () = Stdio.printf "*** WebSocket error: %s ***\n%!" err in
+    Ui_effect.Expert.handle (inject (Action.Ws_error err))
+  );
+
+  ws
+;;
+
+let ws_create_lobby (ws : Websocket_bindings.websocket option) (user_id : string) : unit =
+  match ws with
+  | None -> Stdio.printf "*** WebSocket not connected, cannot create lobby ***\n%!"
+  | Some ws ->
+    let () = Stdio.printf "*** Sending create_lobby via WebSocket for user %s ***\n%!" user_id in
+    Websocket_bindings.send_json ws [
+      ("type", Js.Unsafe.inject (Js.string "create_lobby"))
+    ; ("userId", Js.Unsafe.inject (Js.string user_id))
+    ]
+;;
+
+let ws_join_lobby (ws : Websocket_bindings.websocket option) (user_id : string) (lobby_code : string) : unit =
+  match ws with
+  | None -> Stdio.printf "*** WebSocket not connected, cannot join lobby ***\n%!"
+  | Some ws ->
+    let () = Stdio.printf "*** Sending join_lobby via WebSocket for user %s, code %s ***\n%!" user_id lobby_code in
+    Websocket_bindings.send_json ws [
+      ("type", Js.Unsafe.inject (Js.string "join_lobby"))
+    ; ("userId", Js.Unsafe.inject (Js.string user_id))
+    ; ("lobbyCode", Js.Unsafe.inject (Js.string lobby_code))
+    ]
+;;
+
+let ws_send_game_state (ws : Websocket_bindings.websocket option) (lobby_code : string) (player_id : string) (game_state : Hw2_speed_logic.Enhanced_game_state.t) : unit =
+  match ws with
+  | None -> ()
+  | Some ws ->
+    let () = Stdio.printf "*** Sending game state via WebSocket ***\n%!" in
+    (* Serialize game state to S-expression string *)
+    let sexp = Hw2_speed_logic.Enhanced_game_state.sexp_of_t game_state in
+    let state_str = Sexp.to_string sexp in
+    Websocket_bindings.send_json ws [
+      ("type", Js.Unsafe.inject (Js.string "game_state_update"))
+    ; ("lobbyCode", Js.Unsafe.inject (Js.string lobby_code))
+    ; ("playerId", Js.Unsafe.inject (Js.string player_id))
+    ; ("gameState", Js.Unsafe.inject (Js.string state_str))
+    ]
+;;
 
 (* Create a lobby with a code *)
 let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
@@ -1135,17 +1206,17 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
                      | None -> "Game Over! Click 'New Game' to play again."
                    in
                    let final_model = { updated_model with game_message = win_msg } in
-                   (match model.game_mode with
-                    | OnlineMultiplayer { match_id; player_id; _ } ->
-                      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id state_after_stuck_check));
+                   (match model.game_mode, model.created_lobby_code with
+                    | OnlineMultiplayer { player_id; _ }, Some lobby_code ->
+                      ws_send_game_state model.websocket lobby_code player_id state_after_stuck_check;
                       final_model
-                    | SinglePlayer -> final_model)
+                    | _ -> final_model)
                  else
-                   (match model.game_mode with
-                    | OnlineMultiplayer { match_id; player_id; _ } ->
-                      ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id state_after_stuck_check));
+                   (match model.game_mode, model.created_lobby_code with
+                    | OnlineMultiplayer { player_id; _ }, Some lobby_code ->
+                      ws_send_game_state model.websocket lobby_code player_id state_after_stuck_check;
                       updated_model
-                    | SinglePlayer -> updated_model)
+                    | _ -> updated_model)
             | Error msg ->
                { model with 
                  game_message = "Can't play there: " ^ msg ^ " Try the other pile!"
@@ -2023,11 +2094,25 @@ let app =
               | GameScreen -> "GameScreen")
              (match auth_state with
               | Firebase_bindings.Auth.SignedOut -> "SignedOut"
-              | Firebase_bindings.Auth.SignedIn { email; _ } -> 
+              | Firebase_bindings.Auth.SignedIn { email; _ } ->
                 Printf.sprintf "SignedIn(%s)" (Option.value email ~default:"no email"))
            in
-           (* Return new_model directly - don't process through _ case *)
-           new_model
+           (* Initialize WebSocket when user signs in *)
+           (match auth_state with
+            | Firebase_bindings.Auth.SignedIn _ ->
+              if Option.is_none new_model.websocket then
+                let () = Stdio.printf "*** Initializing WebSocket connection ***\n%!" in
+                let ws = init_websocket inject in
+                { new_model with websocket = Some ws }
+              else
+                new_model
+            | Firebase_bindings.Auth.SignedOut ->
+              (* Close WebSocket when user signs out *)
+              (match new_model.websocket with
+               | Some ws ->
+                 Websocket_bindings.close ws;
+                 { new_model with websocket = None; ws_connected = false }
+               | None -> new_model))
          | _ -> 
         (* Set up Firestore listener when entering multiplayer mode *)
         (match action, new_model.game_mode with
@@ -2099,13 +2184,11 @@ let app =
               new_model)
          | Create_lobby, _ ->
            (* Create a lobby when Create_lobby action is triggered *)
-           let () = Stdio.printf "*** STATE MACHINE: Create_lobby action - creating lobby ***\n%!" in
+           let () = Stdio.printf "*** STATE MACHINE: Create_lobby action - creating lobby via WebSocket ***\n%!" in
            (match new_model.auth_state with
             | Model.Authenticated { uid; _ } ->
-              let () = Stdio.printf "*** User is authenticated, uid=%s, calling create_lobby ***\n%!" uid in
-              ignore (Deferred.bind ~f:(fun () -> 
-                let () = Stdio.printf "*** create_lobby completed ***\n%!" in
-                Deferred.return ()) (create_lobby uid inject));
+              let () = Stdio.printf "*** User is authenticated, uid=%s, sending WebSocket create_lobby ***\n%!" uid in
+              ws_create_lobby new_model.websocket uid;
               { new_model with game_message = "Creating lobby..." }
             | Model.NotAuthenticated ->
               let () = Stdio.printf "*** User is NOT authenticated, cannot create lobby ***\n%!" in
@@ -2116,16 +2199,14 @@ let app =
            { new_model with created_lobby_code = Some code; game_message = Printf.sprintf "Lobby created! Code: %s - Waiting for opponent..." code }
          | Join_lobby, _ ->
            (* Join a lobby when Join_lobby action is triggered *)
-           let () = Stdio.printf "*** STATE MACHINE: Join_lobby action - joining lobby with code: %s ***\n%!" new_model.lobby_code in
+           let () = Stdio.printf "*** STATE MACHINE: Join_lobby action - joining lobby via WebSocket with code: %s ***\n%!" new_model.lobby_code in
            (match new_model.auth_state with
             | Model.Authenticated { uid; _ } ->
               if String.is_empty new_model.lobby_code then
                 { new_model with game_message = "Please enter a lobby code" }
               else
-                let () = Stdio.printf "*** User is authenticated, uid=%s, calling join_lobby ***\n%!" uid in
-                ignore (Deferred.bind ~f:(fun () -> 
-                  let () = Stdio.printf "*** join_lobby completed ***\n%!" in
-                  Deferred.return ()) (join_lobby uid new_model.lobby_code inject));
+                let () = Stdio.printf "*** User is authenticated, uid=%s, sending WebSocket join_lobby ***\n%!" uid in
+                ws_join_lobby new_model.websocket uid new_model.lobby_code;
                 { new_model with game_message = "Joining lobby..." }
             | Model.NotAuthenticated ->
               let () = Stdio.printf "*** User is NOT authenticated, cannot join lobby ***\n%!" in

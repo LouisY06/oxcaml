@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Server Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            font-size: 14px;
+        }
+        #log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .connected { color: green; }
+        .disconnected { color: red; }
+        .message { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>WebSocket Server Test Client</h1>
+
+    <div class="section">
+        <h2>Connection Status: <span id="status" class="disconnected">Disconnected</span></h2>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <div class="section">
+        <h2>Test Actions</h2>
+        <div>
+            <h3>User ID</h3>
+            <input type="text" id="userId" placeholder="user_123" value="user_123">
+        </div>
+        <div>
+            <h3>Lobby Actions</h3>
+            <button onclick="createLobby()">Create Lobby</button>
+            <br>
+            <input type="text" id="lobbyCode" placeholder="Enter lobby code">
+            <button onclick="joinLobby()">Join Lobby</button>
+        </div>
+        <div>
+            <h3>Test Messages</h3>
+            <button onclick="sendPing()">Send Ping</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Message Log</h2>
+        <button onclick="clearLog()">Clear Log</button>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+
+        function log(message, type = '') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const className = type ? `class="${type}"` : '';
+            logDiv.innerHTML += `<div ${className}>[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'message');
+                return;
+            }
+
+            ws = new WebSocket('ws://localhost:8080');
+
+            ws.onopen = () => {
+                log('✅ Connected to WebSocket server', 'connected');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').className = 'connected';
+            };
+
+            ws.onclose = () => {
+                log('❌ Disconnected from server', 'disconnected');
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').className = 'disconnected';
+            };
+
+            ws.onerror = (error) => {
+                log('⚠️ WebSocket error: ' + error, 'disconnected');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log('📨 Received: ' + JSON.stringify(data, null, 2), 'message');
+
+                    // Handle specific message types
+                    if (data.type === 'lobby_created') {
+                        log('🏠 Lobby created! Code: ' + data.lobbyCode, 'connected');
+                        document.getElementById('lobbyCode').value = data.lobbyCode;
+                    } else if (data.type === 'match_found') {
+                        log('🤝 Match found! Match ID: ' + data.matchId, 'connected');
+                    }
+                } catch (e) {
+                    log('📨 Received: ' + event.data, 'message');
+                }
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function send(message) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected! Click Connect first.', 'disconnected');
+                return;
+            }
+            const messageStr = JSON.stringify(message);
+            ws.send(messageStr);
+            log('📤 Sent: ' + messageStr, 'message');
+        }
+
+        function createLobby() {
+            const userId = document.getElementById('userId').value;
+            send({
+                type: 'create_lobby',
+                userId: userId
+            });
+        }
+
+        function joinLobby() {
+            const userId = document.getElementById('userId').value;
+            const lobbyCode = document.getElementById('lobbyCode').value;
+            if (!lobbyCode) {
+                alert('Please enter a lobby code');
+                return;
+            }
+            send({
+                type: 'join_lobby',
+                userId: userId,
+                lobbyCode: lobbyCode
+            });
+        }
+
+        function sendPing() {
+            send({ type: 'ping' });
+        }
+
+        // Auto-connect on page load
+        window.onload = () => {
+            log('Page loaded. Click Connect to start testing.', 'message');
+        };
+    </script>
+</body>
+</html>
