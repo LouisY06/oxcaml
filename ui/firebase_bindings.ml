@@ -290,11 +290,11 @@ module Firestore = struct
     promise
 
   (* Set document data - simplified wrapper *)
-  let set_doc (collection_path : string) (doc_id : string) (data : (string * Js.Unsafe.any) list) : unit Deferred.t =
+  let set_doc ?(merge = false) (collection_path : string) (doc_id : string) (data : (string * Js.Unsafe.any) list) : unit Deferred.t =
     let set_doc_js = Js.Unsafe.global##.firebaseSetDoc in
     if Js.Optdef.test set_doc_js then
       let data_obj = Js.Unsafe.obj (Array.of_list (List.map data ~f:(fun (k, v) -> (k, (v :> Js.Unsafe.any))))) in
-      let promise = Js.Unsafe.fun_call set_doc_js [| Js.Unsafe.inject (Js.string collection_path); Js.Unsafe.inject (Js.string doc_id); Js.Unsafe.inject data_obj |] in
+      let promise = Js.Unsafe.fun_call set_doc_js [| Js.Unsafe.inject (Js.string collection_path); Js.Unsafe.inject (Js.string doc_id); Js.Unsafe.inject data_obj; Js.Unsafe.inject (Js.bool merge) |] in
       let%bind.Deferred _ = promise_to_deferred promise in
       Deferred.return ()
     else
@@ -319,16 +319,7 @@ module Firestore = struct
   
   (* Listen to document changes *)
   let on_snapshot (collection_path : string) (doc_id : string) (callback : Js.Unsafe.any option -> unit) : unsubscribe option =
-    (* Wrapper to convert JavaScript null to OCaml None *)
-    let callback_wrapper (data : Js.Unsafe.any) =
-      (* Check if data is null or undefined *)
-      (* JavaScript null is represented as a special value in js_of_ocaml *)
-      if Js.Unsafe.equals data Js.null || Js.Unsafe.equals data Js.undefined then
-        callback None
-      else
-        callback (Some data)
-    in
-    let callback_js = Js.wrap_callback callback_wrapper in
+    let callback_js = Js.wrap_callback callback in
     let on_snap_js = Js.Unsafe.global##.firebaseOnSnapshot in
     if Js.Optdef.test on_snap_js then
       Some (Js.Unsafe.fun_call on_snap_js [| Js.Unsafe.inject (Js.string collection_path); Js.Unsafe.inject (Js.string doc_id); Js.Unsafe.inject callback_js |])

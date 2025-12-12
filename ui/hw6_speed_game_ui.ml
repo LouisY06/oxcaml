@@ -455,7 +455,7 @@ let join_lobby (uid : string) (lobby_code : string) (inject : Action.t -> unit E
     if String.equal status "waiting" && String.is_empty player2 && not (String.equal host_id uid) then
       (* Join the lobby *)
       let () = Stdio.printf "*** Joining lobby... ***\n%!" in
-      let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code [
+      let%bind _ = Firebase_bindings.Firestore.set_doc ~merge:true "lobbies" lobby_code [
         ("player2", Firebase_bindings.Firestore.string_to_js uid)
       ; ("status", Firebase_bindings.Firestore.string_to_js "ready")
       ] in
@@ -647,12 +647,6 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
     let () = Stdio.printf "*** This might be due to Firestore security rules not being set up! ***\n%!" in
     Deferred.return ()
 
-(* Helper function to convert a string to a seed integer for deterministic shuffling *)
-let string_to_seed (s : string) : int =
-  (* Hash the string to get a deterministic seed *)
-  String.fold s ~init:0 ~f:(fun acc c -> (acc * 31 + Char.to_int c) land 0x3FFFFFFF)
-;;
-
 let setup_firestore_listener (match_id : string) (player_id : string) (inject : Action.t -> unit Effect.t) : Js.Unsafe.any option =
   (* Set up real-time listener for game state changes *)
   let () = Stdio.printf "*** Setting up Firestore listener for match: %s, player: %s ***\n%!" match_id player_id in
@@ -672,9 +666,8 @@ let setup_firestore_listener (match_id : string) (player_id : string) (inject : 
       (* The condition: update if (opponent updated OR we haven't loaded initial state yet) AND state is valid *)
       let is_from_opponent = not (String.equal last_updated player_id) in
       let has_valid_state = not (String.is_empty game_state_str) in
-      (* Update on opponent's changes, or if this is the initial load from the host *)
-      (* For initial multiplayer games, we need to accept the host's state even though it's not from "opponent" yet *)
-      if has_valid_state && is_from_opponent then
+      (* Always update if opponent made a change, or if we have a valid state (for initial load) *)
+      if has_valid_state && (is_from_opponent || true) then (* Always update on valid state for now *)
         try
           let sexp = Parsexp.Single.parse_string_exn game_state_str in
           let new_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
@@ -965,15 +958,13 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Match_found { match_id; player_id; opponent_id } ->
       (* Check if we're the host (player1) by checking if we created the lobby *)
-      (* match_id format is "match_{host_id}_{joiner_id}", so check if it starts with "match_{player_id}" *)
-      let is_host = String.is_prefix ~prefix:("match_" ^ player_id) match_id in
+      (* For now, we'll determine host by checking if match_id starts with our player_id *)
+      let is_host = String.is_prefix ~prefix:player_id match_id in
       let () = Stdio.printf "*** Match_found: match_id=%s, player_id=%s, opponent_id=%s, is_host=%b ***\n%!" match_id player_id opponent_id is_host in
       if is_host then
-        (* Host creates the initial game state with deterministic seed and saves it to Firestore *)
-        let seed = string_to_seed match_id in
-        let () = Stdio.printf "*** Host: Creating initial game state with seed=%d from match_id ***\n%!" seed in
-        let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
-        let () = Stdio.printf "*** Host: Saving game state to Firestore ***\n%!" in
+        (* Host creates the initial game state and saves it to Firestore *)
+        let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
+        let () = Stdio.printf "*** Host: Creating initial game state and saving to Firestore ***\n%!" in
         ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
         { model with
           screen = GameScreen
@@ -985,20 +976,16 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         ; game_message = Printf.sprintf "Match found! Click 'Start Game' to begin playing against %s" opponent_id
         }
       else
-        (* Non-host creates initial state with same seed as host, then waits for sync from Firestore *)
-        (* Using the same seed ensures both players start with identical card states *)
-        let seed = string_to_seed match_id in
-        let () = Stdio.printf "*** Non-host: Creating initial game state with seed=%d from match_id ***\n%!" seed in
-        let initial_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
-        let () = Stdio.printf "*** Non-host: Will sync with Firestore for any updates ***\n%!" in
+        (* Non-host waits for game state from Firestore - listener will be set up in state machine *)
+        let () = Stdio.printf "*** Non-host: Will wait for game state from Firestore ***\n%!" in
         { model with
           screen = GameScreen
         ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
-        ; enhanced_state = initial_state (* Use seeded state so it matches host's state *)
+        ; enhanced_state = model.enhanced_state (* Keep existing state until we get the real one *)
         ; selected_card = None
         ; matchmaking_status = "matched"
         ; game_started = false
-        ; game_message = Printf.sprintf "Match found! Waiting for game to start..."
+        ; game_message = Printf.sprintf "Match found! Waiting for game to start..." 
         }
   
   | Game_state_synced new_state ->
