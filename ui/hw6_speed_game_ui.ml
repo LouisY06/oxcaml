@@ -425,8 +425,21 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
        ; ("matchId", Firebase_bindings.Firestore.string_to_js match_id)
        ; ("playerId", Firebase_bindings.Firestore.string_to_js opponent_id)
        ] in
-       (* Trigger match found action - fire and forget *)
-       ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
+       (* Trigger match found action - schedule with setTimeout to ensure Bonsai processes it *)
+       let () = Stdio.printf "*** Injecting Match_found action: match_id=%s, opponent_id=%s ***\n%!" match_id opponent_id in
+       let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id }) in
+       let setTimeout = Js.Unsafe.global##.setTimeout in
+       if Js.Optdef.test setTimeout then
+         ignore (Js.Unsafe.fun_call setTimeout [|
+           Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+             let () = Stdio.printf "*** setTimeout callback - handling Match_found effect ***\n%!" in
+             Ui_effect.Expert.handle effect;
+             let () = Stdio.printf "*** Match_found effect handled successfully ***\n%!" in
+             ()));
+           Js.Unsafe.inject (Js.number_of_float 10.0)
+         |])
+       else
+         Ui_effect.Expert.handle effect;
        Deferred.return ()
      | None ->
        let () = Stdio.printf "*** No opponent found yet - setting up listener on matchmaking document: %s ***\n%!" matchmaking_id in
@@ -452,13 +465,17 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
                  let player1 = Js.to_string (Js.Unsafe.get match_data (Js.string "player1")) in
                  let player2 = Js.to_string (Js.Unsafe.get match_data (Js.string "player2")) in
                  let opponent_id = if String.equal player1 uid then player2 else player1 in
-                 let () = Stdio.printf "*** Injecting Match_found action: match_id=%s, opponent_id=%s ***\n%!" match_id opponent_id in
+                 let () = Stdio.printf "*** Injecting Match_found action from listener: match_id=%s, opponent_id=%s ***\n%!" match_id opponent_id in
                  let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id }) in
                  (* Schedule with setTimeout to ensure Bonsai processes it *)
                  let setTimeout = Js.Unsafe.global##.setTimeout in
                  if Js.Optdef.test setTimeout then
                    ignore (Js.Unsafe.fun_call setTimeout [|
-                     Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+                     Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+                       let () = Stdio.printf "*** setTimeout callback - handling Match_found effect (from listener) ***\n%!" in
+                       Ui_effect.Expert.handle effect;
+                       let () = Stdio.printf "*** Match_found effect handled successfully (from listener) ***\n%!" in
+                       ()));
                      Js.Unsafe.inject (Js.number_of_float 10.0)
                    |])
                  else
