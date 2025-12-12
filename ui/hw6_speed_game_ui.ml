@@ -560,11 +560,22 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          }
        | Model.Authenticated _, LoginScreen ->
          (* Only transition from LoginScreen to ModeSelectionScreen *)
-         let () = Stdio.printf "Setting screen to ModeSelectionScreen after login (from LoginScreen)\n%!" in
-         { model with
+         let () = Stdio.printf "*** TRANSITIONING FROM LOGINSCREEN TO MODESELECTIONSCREEN ***\n%!" in
+         let new_model = { model with
            auth_state = new_auth_state
          ; screen = ModeSelectionScreen
-         }
+         } in
+         let () = Stdio.printf "*** NEW MODEL CREATED: screen=%s, auth_state=%s ***\n%!"
+           (match new_model.screen with
+            | LoginScreen -> "LoginScreen"
+            | ProfileScreen -> "ProfileScreen"
+            | ModeSelectionScreen -> "ModeSelectionScreen"
+            | GameScreen -> "GameScreen")
+           (match new_model.auth_state with
+            | NotAuthenticated -> "NotAuthenticated"
+            | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
+         in
+         new_model
        | Model.Authenticated _, _ ->
          (* Already on a different screen, just update auth state, don't change screen *)
          let () = Stdio.printf "User authenticated but already on screen %s, keeping current screen\n%!"
@@ -1069,10 +1080,13 @@ module Components = struct
       
       (* Debug logging *)
       let () = match model.screen with
-        | Model.LoginScreen -> Stdio.printf "RENDERING LOGIN SCREEN\n%!"
-        | Model.ProfileScreen -> Stdio.printf "RENDERING PROFILE SCREEN\n%!"
-        | Model.ModeSelectionScreen -> Stdio.printf "RENDERING MODE SELECTION SCREEN\n%!"
-        | Model.GameScreen -> Stdio.printf "RENDERING GAME SCREEN\n%!"
+        | Model.LoginScreen -> Stdio.printf "*** VIEW: RENDERING LOGIN SCREEN (auth_state=%s) ***\n%!"
+          (match model.auth_state with
+           | NotAuthenticated -> "NotAuthenticated"
+           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
+        | Model.ProfileScreen -> Stdio.printf "*** VIEW: RENDERING PROFILE SCREEN ***\n%!"
+        | Model.ModeSelectionScreen -> Stdio.printf "*** VIEW: RENDERING MODE SELECTION SCREEN ***\n%!"
+        | Model.GameScreen -> Stdio.printf "*** VIEW: RENDERING GAME SCREEN ***\n%!"
       in
 
       (* Route to appropriate screen *)
@@ -1289,11 +1303,15 @@ let app =
              let () = Stdio.printf "Sign_in action: attempting to sign in with email=%s\n%!" new_model.login_email in
              ignore (Deferred.bind ~f:(function
                | Ok user -> 
-                 let () = Stdio.printf "Sign in successful! User authenticated. Getting user info...\n%!" in
+                 let () = Stdio.printf "*** SIGN IN SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
-                 let () = Stdio.printf "User info retrieved, injecting Auth_state_changed action\n%!" in
-                 ignore (inject (Action.Auth_state_changed user_info));
+                 let () = Stdio.printf "*** User info retrieved, injecting Auth_state_changed action NOW ***\n%!" in
+                 (* Use Effect.Expert.handle to ensure the action is processed immediately *)
+                 let effect = inject (Action.Auth_state_changed user_info) in
+                 let () = Stdio.printf "*** Effect created, about to handle it ***\n%!" in
+                 ignore (Effect.Expert.handle effect);
+                 let () = Stdio.printf "*** Effect handled, should have transitioned to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign in failed: %s\n%!" msg in
