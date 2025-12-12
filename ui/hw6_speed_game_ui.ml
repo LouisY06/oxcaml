@@ -1395,21 +1395,30 @@ let app =
             | Some unsubscribe ->
               { new_model with firestore_unsubscribe = Some unsubscribe }
             | None -> new_model)
-            | Start_matchmaking, _ ->
-              (* Re-inject start_matchmaking with proper inject function *)
-              (match new_model.auth_state with
-               | Model.Authenticated { uid; _ } ->
-                 ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
-                 new_model
-               | _ -> new_model)
-            | Select_multiplayer, _ ->
-              (* Start matchmaking when multiplayer is selected *)
-              (match new_model.auth_state with
-               | Model.Authenticated { uid; _ } ->
-                 ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
-                 new_model
-               | _ -> new_model)
-            | _ -> new_model)))
+         | Start_matchmaking, _ ->
+           (* Re-inject start_matchmaking with proper inject function *)
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+              new_model
+            | _ -> new_model)
+         | Select_multiplayer, _ ->
+           (* Start matchmaking when multiplayer is selected *)
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (start_matchmaking uid inject));
+              new_model
+            | _ -> new_model)
+         | _ -> new_model))
+        in
+        let () = Stdio.printf "*** STATE MACHINE: Returning final_model with screen: %s ***\n%!"
+          (match final_model.screen with
+           | LoginScreen -> "LoginScreen"
+           | ProfileScreen -> "ProfileScreen"
+           | ModeSelectionScreen -> "ModeSelectionScreen"
+           | GameScreen -> "GameScreen")
+        in
+        final_model)
   in
   
   (* Set up Firebase auth state listener - use a ref to ensure it only runs once *)
