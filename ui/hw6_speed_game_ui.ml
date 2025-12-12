@@ -379,6 +379,17 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
   let () = Stdio.printf "*** Creating lobby document in Firestore: lobbies/%s ***\n%!" lobby_code in
   let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code lobby_data in
   let () = Stdio.printf "*** Lobby created successfully ***\n%!" in
+  (* Update the model to show the lobby code *)
+  let message = Printf.sprintf "Lobby created! Code: %s - Waiting for opponent to join..." lobby_code in
+  let effect = inject (Action.Update_login_error message) in
+  let setTimeout = Js.Unsafe.global##.setTimeout in
+  if Js.Optdef.test setTimeout then
+    ignore (Js.Unsafe.fun_call setTimeout [|
+      Js.Unsafe.inject (Js.wrap_callback (fun _ -> Ui_effect.Expert.handle effect));
+      Js.Unsafe.inject (Js.number_of_float 10.0)
+    |])
+  else
+    Ui_effect.Expert.handle effect;
   (* Set up listener for when someone joins *)
   ignore (Firebase_bindings.Firestore.on_snapshot "lobbies" lobby_code (fun data_opt ->
     let () = Stdio.printf "*** Lobby listener fired! ***\n%!" in
@@ -406,7 +417,6 @@ let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Defe
         else
           Ui_effect.Expert.handle effect
   ));
-  (* Show lobby code to user - this will be handled by updating the model *)
   Deferred.return ()
 
 (* Join a lobby by code *)
