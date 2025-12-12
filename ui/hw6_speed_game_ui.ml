@@ -482,10 +482,28 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          { model with game_message = "No saved game found." })
   
   | Update_login_email email ->
-      { model with login_email = email }
+      (* Clear error message when user starts typing (but keep loading messages) *)
+      let cleared_message = 
+        if String.equal model.game_message "Signing in..." 
+        || String.equal model.game_message "Creating account..." 
+        || String.equal model.game_message "Signing in with Google..." then
+          model.game_message
+        else
+          ""
+      in
+      { model with login_email = email; game_message = cleared_message }
   
   | Update_login_password password ->
-      { model with login_password = password }
+      (* Clear error message when user starts typing (but keep loading messages) *)
+      let cleared_message = 
+        if String.equal model.game_message "Signing in..." 
+        || String.equal model.game_message "Creating account..." 
+        || String.equal model.game_message "Signing in with Google..." then
+          model.game_message
+        else
+          ""
+      in
+      { model with login_password = password; game_message = cleared_message }
   
   | Sign_in ->
       (* Validate email and password before attempting sign in *)
