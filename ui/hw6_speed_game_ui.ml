@@ -1501,7 +1501,8 @@ let app =
                new_model.login_email (String.length new_model.login_password) in
              let deferred_result = Firebase_bindings.Auth.create_user_with_email_and_password new_model.login_email new_model.login_password in
              let () = Stdio.printf "*** Deferred created, binding callback... ***\n%!" in
-             let (_ : unit Deferred.t) = Deferred.bind deferred_result ~f:(function
+             (* Fire and forget - handle result in callback *)
+             let handle_result = function
                | Ok user -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP SUCCESSFUL! ***\n%!" in
                  (* Manually trigger auth state change since callback might not fire immediately *)
@@ -1528,7 +1529,7 @@ let app =
                  else
                    Ui_effect.Expert.handle effect;
                  let () = Stdio.printf "*** Effect scheduled, should transition to ModeSelectionScreen ***\n%!" in
-                 Deferred.return ()
+                 ()
                | Error msg -> 
                  let () = Stdio.printf "*** DEFERRED CALLBACK FIRED - SIGN UP FAILED: %s ***\n%!" msg in
                  let effect = inject (Action.Update_login_error msg) in
@@ -1541,7 +1542,9 @@ let app =
                    |])
                  else
                    Ui_effect.Expert.handle effect;
-                 Deferred.return ()) in
+                 ()
+             in
+             ignore (Deferred.bind deferred_result ~f:(fun result -> handle_result result; Deferred.return ()));
              let () = Stdio.printf "*** Deferred created and bound ***\n%!" in
              (* Don't clear password on error - user might want to try again or sign in *)
              new_model
