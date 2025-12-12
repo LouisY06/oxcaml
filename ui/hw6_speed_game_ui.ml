@@ -66,6 +66,7 @@ module Model = struct
    }
 
   let initial =
+     let () = Stdio.printf "*** Model.initial called - creating LoginScreen model ***\n%!" in
      { screen = LoginScreen
      ; enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ()
      ; selected_card = None

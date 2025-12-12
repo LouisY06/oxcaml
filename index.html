@@ -273,10 +273,9 @@
         // CRITICAL: Clear saved game IMMEDIATELY, before OCaml app loads
         (function() {
             try {
-                if (localStorage.getItem('speed_game_state')) {
-                    console.log('CLEARING saved game from localStorage before app loads');
-                    localStorage.removeItem('speed_game_state');
-                }
+                console.log('=== CLEARING ALL SAVED GAMES ===');
+                localStorage.removeItem('speed_game_state');
+                console.log('=== SAVED GAME CLEARED ===');
             } catch (e) {
                 console.log('Could not clear saved game:', e);
             }
