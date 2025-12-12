@@ -1274,7 +1274,9 @@ end
 (* FIXED Bonsai App Initialization *)
 (* ================================= *)
 let app =
-  let () = Stdio.printf "INITIALIZING APP - Starting with LoginScreen\n%!" in
+  let () = Stdio.printf "*** ======================================== ***\n%!" in
+  let () = Stdio.printf "*** INITIALIZING APP - Starting with LoginScreen ***\n%!" in
+  let () = Stdio.printf "*** ======================================== ***\n%!" in
   let%sub model, inject =
     Bonsai.state_machine0
       (module Model)
@@ -1283,12 +1285,16 @@ let app =
         (* Always start with initial model - login screen first *)
         (* Don't restore saved games automatically - user must sign in first *)
         (let initial = Model.initial in
-         let () = Stdio.printf "Model.initial created: screen=%s\n%!" 
+         let () = Stdio.printf "*** Model.initial created: screen=%s, game_started=%b ***\n%!" 
            (match initial.screen with
             | Model.LoginScreen -> "LoginScreen"
             | Model.ProfileScreen -> "ProfileScreen"
             | Model.ModeSelectionScreen -> "ModeSelectionScreen"
             | Model.GameScreen -> "GameScreen")
+           initial.game_started
+         in
+         let () = Stdio.printf "*** VERIFYING: initial.screen = LoginScreen? %b ***\n%!"
+           (match initial.screen with Model.LoginScreen -> true | _ -> false)
          in
          initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->

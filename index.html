@@ -270,16 +270,20 @@
         <!-- App will mount here -->
     </div>
     <script>
-        // CRITICAL: Clear saved game IMMEDIATELY, before OCaml app loads
-        (function() {
-            try {
-                console.log('=== CLEARING ALL SAVED GAMES ===');
-                localStorage.removeItem('speed_game_state');
-                console.log('=== SAVED GAME CLEARED ===');
-            } catch (e) {
-                console.log('Could not clear saved game:', e);
+        // CRITICAL: Clear saved game IMMEDIATELY, before ANYTHING else
+        console.log('=== STEP 1: CLEARING ALL SAVED GAMES ===');
+        try {
+            localStorage.removeItem('speed_game_state');
+            console.log('=== STEP 2: SAVED GAME CLEARED FROM LOCALSTORAGE ===');
+            // Verify it's gone
+            if (localStorage.getItem('speed_game_state')) {
+                console.error('ERROR: Saved game still exists after removal!');
+            } else {
+                console.log('=== STEP 3: VERIFIED - NO SAVED GAME IN LOCALSTORAGE ===');
             }
-        })();
+        } catch (e) {
+            console.error('ERROR: Could not clear saved game:', e);
+        }
     </script>
 
     <!-- Include the compiled Bonsai JavaScript -->
@@ -401,20 +405,19 @@
         };
         
         // ============================================================
-        // LOCAL STORAGE CHECK - Clear Saved Game on Startup
+        // LOCAL STORAGE CHECK - Already cleared above, just log
         // ============================================================
-        // Clear saved game state on page load to ensure we always start fresh
-        // This prevents old game states from interfering with the login screen
         window.addEventListener('load', () => {
             try {
                 const saved = localStorage.getItem('speed_game_state');
                 if (saved) {
-                    console.log('Clearing saved game from local storage (starting fresh)');
+                    console.error('ERROR: Saved game found AFTER clearing! Removing again...');
                     localStorage.removeItem('speed_game_state');
+                } else {
+                    console.log('Verified: No saved game in localStorage on load');
                 }
             } catch (e) {
-                // localStorage may be disabled or unavailable (e.g., private browsing)
-                console.log('Could not clear saved game:', e);
+                console.log('Could not check saved game:', e);
             }
         });
         
