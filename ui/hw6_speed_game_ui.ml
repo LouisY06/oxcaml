@@ -34,10 +34,15 @@ module Model = struct
    ; win_rate : float (* wins / games_played, or 0.0 if games_played = 0 *)
    }
    [@@deriving sexp, compare, equal]
-   
+
+   type player_number =
+     | Player1
+     | Player2
+   [@@deriving sexp, compare, equal]
+
    type game_mode =
      | SinglePlayer
-     | OnlineMultiplayer of { match_id : string; player_id : string; opponent_id : string }
+     | OnlineMultiplayer of { match_id : string; player_id : string; opponent_id : string; player_number : player_number }
    [@@deriving sexp, compare, equal]
    
    type auth_state =
@@ -449,6 +454,18 @@ let ws_send_game_state (ws : Websocket_bindings.websocket option) (lobby_code : 
     ]
 ;;
 
+let ws_send_player_ready (ws : Websocket_bindings.websocket option) (lobby_code : string) (player_id : string) : unit =
+  match ws with
+  | None -> Stdio.printf "*** WebSocket not connected, cannot send ready ***\n%!"
+  | Some ws ->
+    let () = Stdio.printf "*** Sending player_ready via WebSocket ***\n%!" in
+    Websocket_bindings.send_json ws [
+      ("type", Js.Unsafe.inject (Js.string "player_ready"))
+    ; ("lobbyCode", Js.Unsafe.inject (Js.string lobby_code))
+    ; ("playerId", Js.Unsafe.inject (Js.string player_id))
+    ]
+;;
+
 (* Create a lobby with a code *)
 let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
   let open Deferred.Let_syntax in
@@ -842,21 +859,18 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with game_message = error_msg }
   
   | Start_game ->
-      (* In multiplayer, don't start until both players have synced state *)
-      (match model.game_mode with
-       | OnlineMultiplayer { match_id; player_id; _ } ->
-         (* Sync current state to Firestore to signal game start *)
-         ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) 
-           (sync_game_state_to_firestore match_id player_id model.enhanced_state));
-         { model with 
+      (* In multiplayer, send player_ready to server; in single player, just start *)
+      (match model.game_mode, model.auth_state, model.created_lobby_code with
+       | OnlineMultiplayer _, Model.Authenticated { uid; _ }, Some lobby_code ->
+         (* Send player_ready message via WebSocket *)
+         ws_send_player_ready model.websocket lobby_code uid;
+         { model with game_message = "Waiting for both players to be ready..." }
+       | SinglePlayer, _, _ ->
+         { model with
            game_started = true
          ; game_message = "Game started! Click on your card, then click on a center pile to play!"
          }
-       | SinglePlayer ->
-         { model with 
-           game_started = true
-         ; game_message = "Game started! Click on your card, then click on a center pile to play!"
-         })
+       | _ -> model)
   
   | Sign_out ->
       (* Fire and forget async sign out *)
@@ -971,14 +985,16 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
            let opponent_id = Websocket_bindings.get_string_field msg "opponentId" |> Option.value ~default:"" in
            let is_host = Websocket_bindings.get_bool_field msg "isHost" |> Option.value ~default:false in
            let lobby_code = Websocket_bindings.get_string_field msg "lobbyCode" |> Option.value ~default:"" in
-           let () = Stdio.printf "*** WS: Match found! match_id=%s, lobby=%s, isHost=%b ***\n%!" match_id lobby_code is_host in
+           let player_number = if is_host then Model.Player1 else Model.Player2 in
+           let () = Stdio.printf "*** WS: Match found! match_id=%s, lobby=%s, isHost=%b, player_number=%s ***\n%!"
+             match_id lobby_code is_host (if is_host then "Player1" else "Player2") in
            (* Create game state with deterministic seed *)
            let seed = string_to_seed match_id in
            let () = Stdio.printf "*** Creating game state with seed=%d from match_id ***\n%!" seed in
            let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
            { model with
              screen = GameScreen
-           ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+           ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id; player_number }
            ; enhanced_state = new_enhanced_state
            ; game_started = false
            ; created_lobby_code = Some lobby_code
@@ -989,7 +1005,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
            (* Parse and apply game state from opponent *)
            (try
               let game_state_obj = Js.Unsafe.get msg (Js.string "gameState") in
-              let game_state_str = Js.to_string (Js.Unsafe.global##.JSON##stringify game_state_obj) in
+              let game_state_str = Js.to_string game_state_obj in
               (* Parse the S-expression *)
               let sexp = Parsexp.Single.parse_string_exn game_state_str in
               let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
@@ -997,6 +1013,27 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
             with e ->
               let () = Stdio.printf "*** Error parsing game state: %s ***\n%!" (Exn.to_string e) in
               model)
+       | Some "ready_status" ->
+           let host_ready = Websocket_bindings.get_bool_field msg "hostReady" |> Option.value ~default:false in
+           let joiner_ready = Websocket_bindings.get_bool_field msg "joinerReady" |> Option.value ~default:false in
+           let () = Stdio.printf "*** WS: Ready status - host:%b joiner:%b ***\n%!" host_ready joiner_ready in
+           let ready_msg =
+             if host_ready && joiner_ready then
+               "Both players ready! Starting game..."
+             else if host_ready then
+               "You are ready. Waiting for opponent..."
+             else if joiner_ready then
+               "Opponent is ready. Click 'Start Game' when ready!"
+             else
+               "Click 'Start Game' when ready"
+           in
+           { model with game_message = ready_msg }
+       | Some "game_started" ->
+           let () = Stdio.printf "*** WS: Game started by server! ***\n%!" in
+           { model with
+             game_started = true
+           ; game_message = "Game started! Play your cards!"
+           }
        | Some "error" ->
            let error_msg = Websocket_bindings.get_string_field msg "message" |> Option.value ~default:"Unknown error" in
            let () = Stdio.printf "*** WS Error: %s ***\n%!" error_msg in
@@ -1060,21 +1097,21 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Lobby_created code ->
       (* Transition to game room screen and show lobby code *)
-      { model with 
+      { model with
         screen = GameScreen
       ; created_lobby_code = Some code
       ; game_message = Printf.sprintf "Waiting for opponent to join... Lobby Code: %s" code
-      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = "" } (* Will be set when match found *)
+      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = ""; player_number = Player1 } (* Will be set when match found *)
       ; game_started = false
       }
-  
+
   | Lobby_joined code ->
       (* Transition to game room screen and show lobby code *)
-      { model with 
+      { model with
         screen = GameScreen
       ; created_lobby_code = Some code
       ; game_message = Printf.sprintf "Joined lobby! Code: %s - Waiting for game to start..." code
-      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = "" } (* Will be set when match found *)
+      ; game_mode = OnlineMultiplayer { match_id = ""; player_id = ""; opponent_id = ""; player_number = Player1 } (* Will be set when match found *)
       ; game_started = false
       }
   
@@ -1116,6 +1153,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (* Check if we're the host (player1) by checking if we created the lobby *)
       (* For now, we'll determine host by checking if match_id starts with our player_id *)
       let is_host = String.is_prefix ~prefix:player_id match_id in
+      let player_number = if is_host then Model.Player1 else Model.Player2 in
       let () = Stdio.printf "*** Match_found: match_id=%s, player_id=%s, opponent_id=%s, is_host=%b ***\n%!" match_id player_id opponent_id is_host in
       if is_host then
         (* Host creates the initial game state and saves it to Firestore *)
@@ -1124,7 +1162,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
         { model with
           screen = GameScreen
-        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id; player_number }
         ; enhanced_state = new_enhanced_state
         ; selected_card = None
         ; matchmaking_status = "matched"
@@ -1136,12 +1174,12 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
         let () = Stdio.printf "*** Non-host: Will wait for game state from Firestore ***\n%!" in
         { model with
           screen = GameScreen
-        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id }
+        ; game_mode = OnlineMultiplayer { match_id; player_id; opponent_id; player_number }
         ; enhanced_state = model.enhanced_state (* Keep existing state until we get the real one *)
         ; selected_card = None
         ; matchmaking_status = "matched"
         ; game_started = false
-        ; game_message = Printf.sprintf "Match found! Waiting for game to start..." 
+        ; game_message = Printf.sprintf "Match found! Waiting for game to start..."
         }
   
   | Game_state_synced new_state ->
@@ -1165,12 +1203,13 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          model
       else
         (match model.selected_card with
-         | None -> 
+         | None ->
             { model with game_message = "Select a card from your hand first!" }
-         | Some card -> 
+         | Some card ->
             let player_id = match model.game_mode with
               | SinglePlayer -> "Player1"
-              | OnlineMultiplayer { player_id; _ } -> player_id
+              | OnlineMultiplayer { player_number = Model.Player1; _ } -> "Player1"
+              | OnlineMultiplayer { player_number = Model.Player2; _ } -> "Player2"
             in
             let move = Hw2_speed_logic.Move.Play_card { card; pile = pile_index } in
             match Hw2_speed_logic.Enhanced_game_state.make_move model.enhanced_state move player_id with
@@ -1672,21 +1711,32 @@ module Components = struct
             [ Node.text (Printf.sprintf "Playing against: %s" opponent_id) ]
       in
 
+      (* Determine which hand to show based on player number *)
+      let my_hand, opponent_hand =
+        match model.game_mode with
+        | SinglePlayer ->
+            (model.enhanced_state.base_state.player1_hand, model.enhanced_state.base_state.player2_hand)
+        | OnlineMultiplayer { player_number = Model.Player1; _ } ->
+            (model.enhanced_state.base_state.player1_hand, model.enhanced_state.base_state.player2_hand)
+        | OnlineMultiplayer { player_number = Model.Player2; _ } ->
+            (model.enhanced_state.base_state.player2_hand, model.enhanced_state.base_state.player1_hand)
+      in
+
       (* Player hand *)
       let player_hand_html =
          Node.div
             ~attrs:[ Attr.create "class" "hand"; Attr.create "id" "player1Hand" ]
-            (List.map model.enhanced_state.base_state.player1_hand ~f:(fun card ->
+            (List.map my_hand ~f:(fun card ->
                  card_to_html card
                     (Option.equal Card.equal model.selected_card (Some card))
                     model.game_started false ~inject))
       in
 
-      (* AI hand (face down) *)
+      (* AI/Opponent hand (face down) *)
       let ai_hand_html =
          Node.div
             ~attrs:[ Attr.create "class" "hand"; Attr.create "id" "aiHand" ]
-            (List.map model.enhanced_state.base_state.player2_hand ~f:(fun card ->
+            (List.map opponent_hand ~f:(fun card ->
                  card_to_html card false false true ~inject))
       in
 

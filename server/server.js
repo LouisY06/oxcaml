@@ -45,8 +45,8 @@ function handleMessage(ws, data) {
     case 'join_lobby':
       handleJoinLobby(ws, data);
       break;
-    case 'start_game':
-      handleStartGame(ws, data);
+    case 'player_ready':
+      handlePlayerReady(ws, data);
       break;
     case 'game_state_update':
       handleGameStateUpdate(ws, data);
@@ -73,6 +73,9 @@ function handleCreateLobby(ws, data) {
     joinerWs: null,
     matchId: null,
     gameState: null,
+    hostReady: false,
+    joinerReady: false,
+    gameStarted: false,
     createdAt: Date.now()
   };
 
@@ -152,8 +155,8 @@ function handleJoinLobby(ws, data) {
   }
 }
 
-function handleStartGame(ws, data) {
-  const { lobbyCode, gameState } = data;
+function handlePlayerReady(ws, data) {
+  const { lobbyCode, playerId } = data;
 
   const lobby = lobbies.get(lobbyCode);
   if (!lobby) {
@@ -164,22 +167,44 @@ function handleStartGame(ws, data) {
     return;
   }
 
-  // Store initial game state
-  lobby.gameState = gameState;
+  // Mark player as ready
+  if (playerId === lobby.hostId) {
+    lobby.hostReady = true;
+    console.log(`✅ Host ${playerId} is ready in lobby ${lobbyCode}`);
+  } else if (playerId === lobby.joinerId) {
+    lobby.joinerReady = true;
+    console.log(`✅ Joiner ${playerId} is ready in lobby ${lobbyCode}`);
+  }
 
-  console.log(`🎮 Game started in lobby ${lobbyCode}`);
-
-  // Broadcast to both players
-  const message = JSON.stringify({
-    type: 'game_started',
-    gameState
+  // Notify both players about ready status
+  const readyStatusMsg = JSON.stringify({
+    type: 'ready_status',
+    hostReady: lobby.hostReady,
+    joinerReady: lobby.joinerReady
   });
 
   if (lobby.hostWs && lobby.hostWs.readyState === WebSocket.OPEN) {
-    lobby.hostWs.send(message);
+    lobby.hostWs.send(readyStatusMsg);
   }
   if (lobby.joinerWs && lobby.joinerWs.readyState === WebSocket.OPEN) {
-    lobby.joinerWs.send(message);
+    lobby.joinerWs.send(readyStatusMsg);
+  }
+
+  // If both players are ready and game hasn't started, start the game
+  if (lobby.hostReady && lobby.joinerReady && !lobby.gameStarted) {
+    lobby.gameStarted = true;
+    console.log(`🎮 Game starting in lobby ${lobbyCode} - both players ready!`);
+
+    const gameStartMsg = JSON.stringify({
+      type: 'game_started'
+    });
+
+    if (lobby.hostWs && lobby.hostWs.readyState === WebSocket.OPEN) {
+      lobby.hostWs.send(gameStartMsg);
+    }
+    if (lobby.joinerWs && lobby.joinerWs.readyState === WebSocket.OPEN) {
+      lobby.joinerWs.send(gameStartMsg);
+    }
   }
 }
 
