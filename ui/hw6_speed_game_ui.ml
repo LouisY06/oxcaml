@@ -583,12 +583,12 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (match new_auth_state, model.screen with
        | Model.NotAuthenticated, _ ->
          let () = Stdio.printf "Setting screen to LoginScreen (user signed out)\n%!" in
-      { model with
-        auth_state = new_auth_state
+         { model with
+           auth_state = new_auth_state
          ; screen = LoginScreen
          }
        | Model.Authenticated _, LoginScreen ->
-         (* Only transition from LoginScreen to ModeSelectionScreen *)
+         (* Transition from LoginScreen to ModeSelectionScreen after successful login *)
          let () = Stdio.printf "*** TRANSITIONING FROM LOGINSCREEN TO MODESELECTIONSCREEN ***\n%!" in
          let new_model = { model with
            auth_state = new_auth_state
@@ -605,15 +605,18 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
             | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email"))
          in
          new_model
-       | Model.Authenticated _, _ ->
-         (* Already on a different screen, just update auth state, don't change screen *)
-         let () = Stdio.printf "User authenticated but already on screen %s, keeping current screen\n%!"
+       | Model.Authenticated _, (ProfileScreen | ModeSelectionScreen) ->
+         (* Already on profile or mode selection, just update auth state *)
+         let () = Stdio.printf "User authenticated, already on %s, keeping current screen\n%!"
            (match model.screen with
-            | LoginScreen -> "LoginScreen"
             | ProfileScreen -> "ProfileScreen"
             | ModeSelectionScreen -> "ModeSelectionScreen"
-            | GameScreen -> "GameScreen")
+            | _ -> "unknown")
          in
+         { model with auth_state = new_auth_state }
+       | Model.Authenticated _, GameScreen ->
+         (* In a game, don't change screen - just update auth state *)
+         let () = Stdio.printf "User authenticated during game, keeping GameScreen\n%!" in
          { model with auth_state = new_auth_state })
   
   | Load_player_stats ->
@@ -1498,13 +1501,22 @@ let app =
              new_model
          | Sign_in_with_google ->
            (* Handle Google sign in - uses redirect, so page will navigate away *)
+           let () = Stdio.printf "*** STATE MACHINE: Sign_in_with_google handler - calling Firebase ***\n%!" in
            ignore (Deferred.bind ~f:(function
-             | Ok _ -> Deferred.return () (* Should not happen with redirect *)
+             | Ok _ -> 
+               let () = Stdio.printf "*** Google sign-in returned Ok (unexpected with redirect) ***\n%!" in
+               Deferred.return () (* Should not happen with redirect *)
              | Error msg -> 
+               let () = Stdio.printf "*** Google sign-in returned Error: %s ***\n%!" msg in
                (* "Redirect in progress" is expected, don't show as error *)
-               if not (String.equal msg "Redirect in progress") then
-                 ignore (inject (Action.Update_login_error msg));
-               Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_google ()));
+               if String.equal msg "Redirect in progress" then
+                 let () = Stdio.printf "*** Redirect in progress - this is expected, page will redirect ***\n%!" in
+                 Deferred.return ()
+               else
+                 let () = Stdio.printf "*** Google sign-in error (not redirect): %s - showing error to user ***\n%!" msg in
+                 let effect = inject (Action.Update_login_error msg) in
+                 Ui_effect.Expert.handle effect;
+                 Deferred.return ()) (Firebase_bindings.Auth.sign_in_with_google ()));
            new_model
          | Load_player_stats ->
            (* Load player stats from Firestore *)

@@ -164,19 +164,53 @@
         window.firebaseSignInWithGoogle = async function() {
             try {
                 console.log('=== firebaseSignInWithGoogle called ===');
-                const { signInWithRedirect, getRedirectResult, GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                console.log('Auth object:', auth);
+                console.log('Auth app:', auth?.app);
+                
+                // Check if Google sign-in is enabled
+                if (!auth) {
+                    console.error('❌ Auth object is null!');
+                    return { success: false, error: 'Firebase Auth is not initialized. Please check your Firebase configuration.' };
+                }
+                
+                const { signInWithRedirect, GoogleAuthProvider } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js');
+                console.log('Firebase auth module imported successfully');
+                
                 const provider = new GoogleAuthProvider();
-                console.log('GoogleAuthProvider created, initiating redirect...');
+                console.log('GoogleAuthProvider created:', provider);
+                
+                // Add scopes if needed
+                provider.addScope('email');
+                provider.addScope('profile');
+                
                 console.log('Current URL before redirect:', window.location.href);
+                console.log('About to call signInWithRedirect...');
+                
                 // Use redirect instead of popup to avoid COOP policy issues
                 await signInWithRedirect(auth, provider);
-                console.log('signInWithRedirect called - page should redirect now');
-                // Note: The redirect will navigate away, so we return a pending state
-                // The actual result will be handled by getRedirectResult when the page loads back
+                
+                // If we reach here, the redirect didn't happen (shouldn't happen)
+                console.warn('⚠️ signInWithRedirect returned without redirecting - this is unexpected');
                 return { success: true, pending: true };
             } catch (error) {
-                console.error('firebaseSignInWithGoogle error:', error);
-                return { success: false, error: error.message };
+                console.error('❌ firebaseSignInWithGoogle error:', error);
+                console.error('Error code:', error.code);
+                console.error('Error message:', error.message);
+                console.error('Full error:', JSON.stringify(error, null, 2));
+                
+                // Provide user-friendly error messages
+                let errorMessage = error.message || 'Unknown error';
+                if (error.code === 'auth/operation-not-allowed') {
+                    errorMessage = 'Google sign-in is not enabled in Firebase Console. Please enable it in Authentication > Sign-in method > Google.';
+                } else if (error.code === 'auth/popup-blocked') {
+                    errorMessage = 'Popup was blocked. Please allow popups for this site.';
+                } else if (error.code === 'auth/redirect-cancelled-by-user') {
+                    errorMessage = 'Sign-in was cancelled.';
+                } else if (error.code) {
+                    errorMessage = `Google sign-in failed: ${error.code}. ${error.message}`;
+                }
+                
+                return { success: false, error: errorMessage };
             }
         };
         
@@ -209,13 +243,23 @@
                 // we should use that instead
                 console.log('=== Checking auth.currentUser BEFORE getRedirectResult ===');
                 console.log('Auth currentUser:', auth.currentUser);
+                
+                // Check if we're coming back from a redirect by looking at URL params or sessionStorage
+                const urlParams = new URLSearchParams(window.location.search);
+                const hasRedirectParams = urlParams.has('__firebase_request_key') || 
+                                         sessionStorage.getItem('firebase:pendingRedirect:' + auth.app.options.apiKey + ':[DEFAULT]');
+                console.log('Has redirect indicators:', hasRedirectParams);
+                
                 if (auth.currentUser) {
                     console.log('✅ auth.currentUser already exists!');
                     console.log('User email:', auth.currentUser.email);
                     console.log('User UID:', auth.currentUser.uid);
                     console.log('This means user is already signed in - calling callback immediately');
-                    callback(auth.currentUser);
-                    console.log('Callback called with existing currentUser');
+                    // Use setTimeout to ensure Bonsai is ready
+                    setTimeout(() => {
+                        callback(auth.currentUser);
+                        console.log('Callback called with existing currentUser (delayed)');
+                    }, 100);
                 } else {
                     console.log('No currentUser - checking for redirect result...');
                     
@@ -245,9 +289,11 @@
                             console.log('NOW CALLING CALLBACK WITH USER...');
                             
                             // CRITICAL: Call the callback with the signed-in user
-                            callback(result.user);
-                            
-                            console.log('Callback called successfully');
+                            // Use setTimeout to ensure Bonsai component is ready
+                            setTimeout(() => {
+                                callback(result.user);
+                                console.log('Callback called successfully (delayed for Bonsai)');
+                            }, 100);
                         } else if (auth.currentUser) {
                             // If getRedirectResult returns null but auth.currentUser now exists,
                             // the redirect was processed but getRedirectResult didn't return it
@@ -255,7 +301,11 @@
                             console.log('Current user email:', auth.currentUser.email);
                             console.log('Current user UID:', auth.currentUser.uid);
                             console.log('Redirect was processed - calling callback with currentUser');
-                            callback(auth.currentUser);
+                            // Use setTimeout to ensure Bonsai component is ready
+                            setTimeout(() => {
+                                callback(auth.currentUser);
+                                console.log('Callback called with currentUser (delayed for Bonsai)');
+                            }, 100);
                         } else {
                             console.log('ℹ️ No redirect result and no currentUser');
                             console.log('This is normal if:');
