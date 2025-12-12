@@ -1305,9 +1305,29 @@ let app =
          in
          initial)
       ~apply_action:(fun ~inject ~schedule_event:_ _model action ->
+        let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s ***\n%!"
+          (match action with
+           | Action.Sign_in -> "Sign_in"
+           | Action.Sign_up -> "Sign_up"
+           | Action.Sign_in_with_google -> "Sign_in_with_google"
+           | Action.Auth_state_changed _ -> "Auth_state_changed"
+           | _ -> "Other")
+          (match _model.screen with
+           | LoginScreen -> "LoginScreen"
+           | ProfileScreen -> "ProfileScreen"
+           | ModeSelectionScreen -> "ModeSelectionScreen"
+           | GameScreen -> "GameScreen")
+        in
         let new_model = apply_action action _model in
+        let () = Stdio.printf "*** STATE MACHINE: After apply_action, new_model.screen: %s ***\n%!"
+          (match new_model.screen with
+           | LoginScreen -> "LoginScreen"
+           | ProfileScreen -> "ProfileScreen"
+           | ModeSelectionScreen -> "ModeSelectionScreen"
+           | GameScreen -> "GameScreen")
+        in
         (* Handle async auth operations and errors *)
-        (match action with
+        let final_model = (match action with
          | Sign_in ->
            (* Only attempt sign-in if email and password are not empty *)
            if String.is_empty new_model.login_email || String.is_empty new_model.login_password then
