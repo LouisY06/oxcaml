@@ -1395,14 +1395,15 @@ let app =
               new_model
             | _ -> new_model)
          | Auth_state_changed _ ->
-           (* Auth_state_changed is handled in apply_action, just return the new_model *)
-           let () = Stdio.printf "*** STATE MACHINE: Auth_state_changed action - new_model.screen is %s ***\n%!"
+           (* Auth_state_changed is handled in apply_action - the screen should already be updated *)
+           let () = Stdio.printf "*** STATE MACHINE: Auth_state_changed action processed - new_model.screen is %s ***\n%!"
              (match new_model.screen with
               | LoginScreen -> "LoginScreen"
               | ProfileScreen -> "ProfileScreen"
               | ModeSelectionScreen -> "ModeSelectionScreen"
               | GameScreen -> "GameScreen")
            in
+           (* Return new_model directly - don't process through _ case *)
            new_model
          | _ -> 
         (* Set up Firestore listener when entering multiplayer mode *)
