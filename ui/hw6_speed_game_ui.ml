@@ -1327,7 +1327,7 @@ let app =
           | Authenticated { email; _ } -> Printf.sprintf "Authenticated(%s)" (Option.value email ~default:"no email")
         in
         let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s, current auth_state: %s ***\n%!"
-          action_str screen_str auth_str
+          action_str screen_str auth_str in
           (match _model.screen with
            | LoginScreen -> "LoginScreen"
            | ProfileScreen -> "ProfileScreen"
