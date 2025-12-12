@@ -536,7 +536,13 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       }
   
   | Auth_state_changed auth_state ->
-      let () = Stdio.printf "Auth_state_changed action received\n%!" in
+      let () = Stdio.printf "Auth_state_changed action received, current screen: %s\n%!" 
+        (match model.screen with
+         | LoginScreen -> "LoginScreen"
+         | ProfileScreen -> "ProfileScreen"
+         | ModeSelectionScreen -> "ModeSelectionScreen"
+         | GameScreen -> "GameScreen")
+      in
       let new_auth_state = match auth_state with
         | Firebase_bindings.Auth.SignedOut -> 
           let () = Stdio.printf "User signed out\n%!" in
@@ -545,19 +551,30 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
           let () = Stdio.printf "User signed in: %s (uid: %s)\n%!" (Option.value email ~default:"no email") uid in
           Model.Authenticated { uid; email; display_name }
       in
-      (match new_auth_state with
-       | Model.NotAuthenticated ->
-         let () = Stdio.printf "Setting screen to LoginScreen\n%!" in
+      (match new_auth_state, model.screen with
+       | Model.NotAuthenticated, _ ->
+         let () = Stdio.printf "Setting screen to LoginScreen (user signed out)\n%!" in
          { model with
            auth_state = new_auth_state
          ; screen = LoginScreen
          }
-       | Model.Authenticated _ ->
-         let () = Stdio.printf "Setting screen to ModeSelectionScreen after login\n%!" in
+       | Model.Authenticated _, LoginScreen ->
+         (* Only transition from LoginScreen to ModeSelectionScreen *)
+         let () = Stdio.printf "Setting screen to ModeSelectionScreen after login (from LoginScreen)\n%!" in
          { model with
            auth_state = new_auth_state
          ; screen = ModeSelectionScreen
-         })
+         }
+       | Model.Authenticated _, _ ->
+         (* Already on a different screen, just update auth state, don't change screen *)
+         let () = Stdio.printf "User authenticated but already on screen %s, keeping current screen\n%!"
+           (match model.screen with
+            | LoginScreen -> "LoginScreen"
+            | ProfileScreen -> "ProfileScreen"
+            | ModeSelectionScreen -> "ModeSelectionScreen"
+            | GameScreen -> "GameScreen")
+         in
+         { model with auth_state = new_auth_state })
   
   | Load_player_stats ->
       (* This will be handled in the state machine callback *)
