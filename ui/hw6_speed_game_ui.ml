@@ -965,8 +965,8 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
   
   | Match_found { match_id; player_id; opponent_id } ->
       (* Check if we're the host (player1) by checking if we created the lobby *)
-      (* For now, we'll determine host by checking if match_id starts with our player_id *)
-      let is_host = String.is_prefix ~prefix:player_id match_id in
+      (* match_id format is "match_{host_id}_{joiner_id}", so check if it starts with "match_{player_id}" *)
+      let is_host = String.is_prefix ~prefix:("match_" ^ player_id) match_id in
       let () = Stdio.printf "*** Match_found: match_id=%s, player_id=%s, opponent_id=%s, is_host=%b ***\n%!" match_id player_id opponent_id is_host in
       if is_host then
         (* Host creates the initial game state with deterministic seed and saves it to Firestore *)
