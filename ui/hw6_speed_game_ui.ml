@@ -1331,7 +1331,8 @@ let app =
            | Action.Go_to_profile -> "Go_to_profile"
            | Action.Go_to_mode_selection -> "Go_to_mode_selection"
            | Action.Load_player_stats -> "Load_player_stats"
-           | Action.Player_stats_loaded _ -> "Player_stats_loaded")
+           | Action.Player_stats_loaded _ -> "Player_stats_loaded"
+           | Action.Game_state_synced _ -> "Game_state_synced")
         in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"
