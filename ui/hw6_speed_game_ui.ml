@@ -1307,11 +1307,9 @@ let app =
                  (* Manually trigger auth state change since callback might not fire immediately *)
                  let user_info = Firebase_bindings.Auth.get_user_info user in
                  let () = Stdio.printf "*** User info retrieved, injecting Auth_state_changed action NOW ***\n%!" in
-                 (* Use Effect.Expert.handle to ensure the action is processed immediately *)
-                 let effect = inject (Action.Auth_state_changed user_info) in
-                 let () = Stdio.printf "*** Effect created, about to handle it ***\n%!" in
-                 ignore (Effect.Expert.handle effect);
-                 let () = Stdio.printf "*** Effect handled, should have transitioned to ModeSelectionScreen ***\n%!" in
+                 (* Inject the action - Bonsai will process it *)
+                 ignore (inject (Action.Auth_state_changed user_info));
+                 let () = Stdio.printf "*** Action injected, should transition to ModeSelectionScreen ***\n%!" in
                  Deferred.return ()
                | Error msg -> 
                  let () = Stdio.printf "Sign in failed: %s\n%!" msg in
