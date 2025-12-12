@@ -55,6 +55,7 @@ module Model = struct
       ; firestore_unsubscribe : (Js.Unsafe.any option [@sexp.opaque] [@compare.ignore] [@equal.ignore]) (* For cleaning up listeners *)
       ; game_started : bool (* Whether the game has been started *)
       ; player_stats : player_stats option (* Player statistics, loaded from Firestore *)
+      ; lobby_code : string (* Lobby code for joining games *)
       }
   [@@deriving sexp, compare, equal]
 
@@ -77,8 +78,9 @@ module Model = struct
       ; login_password = ""
       ; matchmaking_status = "idle"
       ; firestore_unsubscribe = None
-     ; game_started = false
-     ; player_stats = None
+      ; game_started = false
+      ; player_stats = None
+      ; lobby_code = ""
       }
    ;;
 end
@@ -106,6 +108,9 @@ module Action = struct
     | Game_state_synced of Hw2_speed_logic.Enhanced_game_state.t (* From Firestore *)
     | Select_single_player (* Choose to play against AI *)
     | Select_multiplayer (* Choose to play online *)
+    | Create_lobby (* Create a new lobby with a code *)
+    | Join_lobby (* Join a lobby by entering a code *)
+    | Update_lobby_code of string (* Update the lobby code input field *)
     | Go_to_mode_selection (* Go back to mode selection *)
     | Go_to_profile (* Go to profile screen *)
     | Load_player_stats (* Load player stats from Firestore *)
@@ -346,6 +351,121 @@ let sync_game_state_to_firestore (match_id : string) (player_id : string) (state
   ; ("timestamp", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
   ] in
   Firebase_bindings.Firestore.set_doc "matches" match_id data
+
+(* Generate a random 6-character lobby code *)
+let generate_lobby_code () : string =
+  let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
+  let len = String.length chars in
+  let code = String.init 6 ~f:(fun _ ->
+    String.get chars (Random.int len)
+  ) in
+  code
+
+(* Create a lobby with a code *)
+let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
+  let open Deferred.Let_syntax in
+  let () = Stdio.printf "*** CREATE_LOBBY called with uid=%s ***\n%!" uid in
+  (* Generate a unique lobby code *)
+  let lobby_code = generate_lobby_code () in
+  let () = Stdio.printf "*** Generated lobby code: %s ***\n%!" lobby_code in
+  (* Create lobby document in Firestore *)
+  let lobby_data = [
+    ("hostId", Firebase_bindings.Firestore.string_to_js uid)
+  ; ("status", Firebase_bindings.Firestore.string_to_js "waiting")
+  ; ("createdAt", Firebase_bindings.Firestore.int_to_js (Int.of_float (Js.Unsafe.global##.Date##now () /. 1000.0)))
+  ; ("player1", Firebase_bindings.Firestore.string_to_js uid)
+  ; ("player2", Firebase_bindings.Firestore.string_to_js "")
+  ] in
+  let () = Stdio.printf "*** Creating lobby document in Firestore: lobbies/%s ***\n%!" lobby_code in
+  let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code lobby_data in
+  let () = Stdio.printf "*** Lobby created successfully ***\n%!" in
+  (* Set up listener for when someone joins *)
+  ignore (Firebase_bindings.Firestore.on_snapshot "lobbies" lobby_code (fun data_opt ->
+    let () = Stdio.printf "*** Lobby listener fired! ***\n%!" in
+    match data_opt with
+    | None -> ()
+    | Some data ->
+      let status = Js.to_string (Js.Unsafe.get data (Js.string "status")) in
+      let player2_raw = Js.Unsafe.get data (Js.string "player2") in
+      let player2 = if Js.Optdef.test player2_raw then Js.to_string player2_raw else "" in
+      let () = Stdio.printf "*** Lobby status: %s, player2: %s ***\n%!" status player2 in
+      if String.equal status "ready" && not (String.is_empty player2) then
+        (* Opponent joined! Create match *)
+        let match_id = Printf.sprintf "match_%s_%s" uid player2 in
+        let () = Stdio.printf "*** Opponent joined! Creating match: %s ***\n%!" match_id in
+        let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id = player2 }) in
+        let setTimeout = Js.Unsafe.global##.setTimeout in
+        if Js.Optdef.test setTimeout then
+          ignore (Js.Unsafe.fun_call setTimeout [|
+            Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+              let () = Stdio.printf "*** Handling Match_found effect from lobby ***\n%!" in
+              Ui_effect.Expert.handle effect;
+              ()));
+            Js.Unsafe.inject (Js.number_of_float 10.0)
+          |])
+        else
+          Ui_effect.Expert.handle effect
+  ));
+  (* Show lobby code to user - this will be handled by updating the model *)
+  Deferred.return ()
+
+(* Join a lobby by code *)
+let join_lobby (uid : string) (lobby_code : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
+  let open Deferred.Let_syntax in
+  let () = Stdio.printf "*** JOIN_LOBBY called with uid=%s, code=%s ***\n%!" uid lobby_code in
+  (* Get lobby document *)
+  let%bind lobby_result = Firebase_bindings.Firestore.get_doc "lobbies" lobby_code in
+  match lobby_result with
+  | Ok (Some lobby_data) ->
+    let () = Stdio.printf "*** Lobby found! Checking if it's available... ***\n%!" in
+    let status = Js.to_string (Js.Unsafe.get lobby_data (Js.string "status")) in
+    let host_id = Js.to_string (Js.Unsafe.get lobby_data (Js.string "hostId")) in
+    let player2_raw = Js.Unsafe.get lobby_data (Js.string "player2") in
+    let player2 = if Js.Optdef.test player2_raw then Js.to_string player2_raw else "" in
+    let () = Stdio.printf "*** Lobby status: %s, host: %s, player2: %s ***\n%!" status host_id player2 in
+    if String.equal status "waiting" && String.is_empty player2 && not (String.equal host_id uid) then
+      (* Join the lobby *)
+      let () = Stdio.printf "*** Joining lobby... ***\n%!" in
+      let%bind _ = Firebase_bindings.Firestore.set_doc "lobbies" lobby_code [
+        ("player2", Firebase_bindings.Firestore.string_to_js uid)
+      ; ("status", Firebase_bindings.Firestore.string_to_js "ready")
+      ] in
+      let () = Stdio.printf "*** Joined lobby successfully! Creating match... ***\n%!" in
+      (* Create match *)
+      let match_id = Printf.sprintf "match_%s_%s" host_id uid in
+      let effect = inject (Action.Match_found { match_id; player_id = uid; opponent_id = host_id }) in
+      let setTimeout = Js.Unsafe.global##.setTimeout in
+      if Js.Optdef.test setTimeout then
+        ignore (Js.Unsafe.fun_call setTimeout [|
+          Js.Unsafe.inject (Js.wrap_callback (fun _ ->
+            let () = Stdio.printf "*** Handling Match_found effect from join lobby ***\n%!" in
+            Ui_effect.Expert.handle effect;
+            ()));
+          Js.Unsafe.inject (Js.number_of_float 10.0)
+        |])
+      else
+        Ui_effect.Expert.handle effect;
+      Deferred.return ()
+    else if String.equal host_id uid then
+      let () = Stdio.printf "*** Cannot join your own lobby! ***\n%!" in
+      let effect = inject (Action.Update_login_error "Cannot join your own lobby!") in
+      Ui_effect.Expert.handle effect;
+      Deferred.return ()
+    else
+      let () = Stdio.printf "*** Lobby is not available (status: %s, player2: %s) ***\n%!" status player2 in
+      let effect = inject (Action.Update_login_error "Lobby is full or not available") in
+      Ui_effect.Expert.handle effect;
+      Deferred.return ()
+  | Ok None ->
+    let () = Stdio.printf "*** Lobby not found! ***\n%!" in
+    let effect = inject (Action.Update_login_error "Lobby code not found") in
+    Ui_effect.Expert.handle effect;
+    Deferred.return ()
+  | Error err ->
+    let () = Stdio.printf "*** Error getting lobby: %s ***\n%!" err in
+    let effect = inject (Action.Update_login_error (Printf.sprintf "Error joining lobby: %s" err)) in
+    Ui_effect.Expert.handle effect;
+    Deferred.return ()
 
 let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
   let open Deferred.Let_syntax in
@@ -697,6 +817,7 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       }
   
   | Select_multiplayer ->
+      (* This action is now deprecated - use Create_lobby or Join_lobby instead *)
       (match model.auth_state with
        | Model.NotAuthenticated ->
          { model with screen = LoginScreen; game_message = "Please sign in first!" }
@@ -707,6 +828,28 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
          ; matchmaking_status = "searching"
          ; game_message = "Searching for opponent..."
          })
+  
+  | Create_lobby ->
+      (* Create lobby action - will be handled in state machine callback *)
+      (match model.auth_state with
+       | Model.NotAuthenticated ->
+         { model with screen = LoginScreen; game_message = "Please sign in first!" }
+       | Model.Authenticated _ ->
+         { model with game_message = "Creating lobby..." })
+  
+  | Join_lobby ->
+      (* Join lobby action - will be handled in state machine callback *)
+      (match model.auth_state with
+       | Model.NotAuthenticated ->
+         { model with screen = LoginScreen; game_message = "Please sign in first!" }
+       | Model.Authenticated _ ->
+         if String.is_empty model.lobby_code then
+           { model with game_message = "Please enter a lobby code" }
+         else
+           { model with game_message = "Joining lobby..." })
+  
+  | Update_lobby_code code ->
+      { model with lobby_code = code }
   
   | Go_to_mode_selection ->
       (* Clean up any active game/matchmaking *)
@@ -1045,12 +1188,39 @@ module Components = struct
                       ; Attr.create "style" "padding: 20px 40px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
                       ]
                     [ Node.text "Play Against AI" ]
-                ; Node.button
-                    ~attrs:
-                      [ on_click (fun _ -> inject Action.Select_multiplayer)
-                      ; Attr.create "style" "padding: 20px 40px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-                      ]
-                    [ Node.text "Play Online (Multiplayer)" ]
+                ; Node.div
+                    ~attrs:[ Attr.create "style" "margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 10px;" ]
+                    [ Node.h2 ~attrs:[ Attr.create "style" "margin-bottom: 15px; color: #333; font-size: 16px;" ] [ Node.text "Multiplayer" ]
+                    ; Node.button
+                        ~attrs:
+                          [ on_click (fun _ -> inject Action.Create_lobby)
+                          ; Attr.create "style" "padding: 15px 30px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                          ]
+                        [ Node.text "🎮 Create Lobby" ]
+                    ; Node.div
+                        ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
+                        [ Node.text "━━━ or ━━━" ]
+                    ; Node.div
+                        ~attrs:[ Attr.create "style" "margin-bottom: 10px;" ]
+                        [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Enter Lobby Code" ]
+                        ; Node.input
+                            ~attrs:
+                              [ Attr.create "type" "text"
+                              ; Attr.create "value" model.lobby_code
+                              ; Attr.create "placeholder" "Enter 6-digit code"
+                              ; Attr.create "maxlength" "6"
+                              ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; text-transform: uppercase; letter-spacing: 2px; text-align: center; box-sizing: border-box;"
+                              ; Attr.on_input (fun _ text -> inject (Action.Update_lobby_code (String.uppercase text)))
+                              ]
+                              ()
+                        ]
+                    ; Node.button
+                        ~attrs:
+                          [ on_click (fun _ -> inject Action.Join_lobby)
+                          ; Attr.create "style" "padding: 15px 30px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                          ]
+                        [ Node.text "🚪 Join Lobby" ]
+                    ]
                 ]
             ; (match model.auth_state with
                | Model.Authenticated { email; _ } ->
@@ -1419,10 +1589,13 @@ let app =
            | Action.Select_single_player -> "Select_single_player"
            | Action.Select_multiplayer -> "Select_multiplayer"
            | Action.Go_to_profile -> "Go_to_profile"
-           | Action.Go_to_mode_selection -> "Go_to_mode_selection"
-           | Action.Load_player_stats -> "Load_player_stats"
-           | Action.Player_stats_loaded _ -> "Player_stats_loaded"
-           | Action.Game_state_synced _ -> "Game_state_synced")
+            | Action.Go_to_mode_selection -> "Go_to_mode_selection"
+            | Action.Load_player_stats -> "Load_player_stats"
+            | Action.Player_stats_loaded _ -> "Player_stats_loaded"
+            | Action.Game_state_synced _ -> "Game_state_synced"
+            | Action.Create_lobby -> "Create_lobby"
+            | Action.Join_lobby -> "Join_lobby"
+            | Action.Update_lobby_code _ -> "Update_lobby_code")
         in
         let action_str = match action with
           | Action.Sign_in -> "Sign_in"
@@ -1647,6 +1820,35 @@ let app =
               new_model
             | Model.NotAuthenticated ->
               let () = Stdio.printf "*** User is NOT authenticated, cannot start matchmaking ***\n%!" in
+              new_model)
+         | Create_lobby, _ ->
+           (* Create a lobby when Create_lobby action is triggered *)
+           let () = Stdio.printf "*** STATE MACHINE: Create_lobby action - creating lobby ***\n%!" in
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              let () = Stdio.printf "*** User is authenticated, uid=%s, calling create_lobby ***\n%!" uid in
+              ignore (Deferred.bind ~f:(fun () -> 
+                let () = Stdio.printf "*** create_lobby completed ***\n%!" in
+                Deferred.return ()) (create_lobby uid inject));
+              { new_model with game_message = "Creating lobby... Waiting for opponent to join." }
+            | Model.NotAuthenticated ->
+              let () = Stdio.printf "*** User is NOT authenticated, cannot create lobby ***\n%!" in
+              new_model)
+         | Join_lobby, _ ->
+           (* Join a lobby when Join_lobby action is triggered *)
+           let () = Stdio.printf "*** STATE MACHINE: Join_lobby action - joining lobby with code: %s ***\n%!" new_model.lobby_code in
+           (match new_model.auth_state with
+            | Model.Authenticated { uid; _ } ->
+              if String.is_empty new_model.lobby_code then
+                { new_model with game_message = "Please enter a lobby code" }
+              else
+                let () = Stdio.printf "*** User is authenticated, uid=%s, calling join_lobby ***\n%!" uid in
+                ignore (Deferred.bind ~f:(fun () -> 
+                  let () = Stdio.printf "*** join_lobby completed ***\n%!" in
+                  Deferred.return ()) (join_lobby uid new_model.lobby_code inject));
+                { new_model with game_message = "Joining lobby..." }
+            | Model.NotAuthenticated ->
+              let () = Stdio.printf "*** User is NOT authenticated, cannot join lobby ***\n%!" in
               new_model)
          | _ -> new_model))
         in

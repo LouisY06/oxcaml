@@ -82,6 +82,14 @@ service cloud.firestore {
       allow write: if request.auth != null 
         && (resource == null || resource.data.lastUpdatedBy == request.auth.uid);
     }
+    
+    // Lobbies collection (for lobby code system)
+    match /lobbies/{lobbyCode} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
   }
 }
 ```
