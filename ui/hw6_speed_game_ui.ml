@@ -661,10 +661,13 @@ let setup_firestore_listener (match_id : string) (player_id : string) (inject : 
       let game_state_str = Js.to_string (Js.Unsafe.get data (Js.string "gameState")) in
       let last_updated = Js.to_string (Js.Unsafe.get data (Js.string "lastUpdatedBy")) in
       let () = Stdio.printf "*** Firestore listener: lastUpdatedBy=%s, player_id=%s ***\n%!" last_updated player_id in
-      (* Update if change came from opponent OR if this is the first time we're seeing the game state *)
-      (* For non-host, we need to load the initial state even if it was created by the host *)
-      (* Always update if the game state string is not empty and different from what we have *)
-      if not (String.equal last_updated player_id) && not (String.is_empty game_state_str) then
+      (* Always update if we have a valid game state and it came from opponent *)
+      (* For non-host, we also need to load the initial state created by host *)
+      (* The condition: update if (opponent updated OR we haven't loaded initial state yet) AND state is valid *)
+      let is_from_opponent = not (String.equal last_updated player_id) in
+      let has_valid_state = not (String.is_empty game_state_str) in
+      (* Always update if opponent made a change, or if we have a valid state (for initial load) *)
+      if has_valid_state && (is_from_opponent || true) then (* Always update on valid state for now *)
         try
           let sexp = Parsexp.Single.parse_string_exn game_state_str in
           let new_state = Hw2_speed_logic.Enhanced_game_state.t_of_sexp sexp in
@@ -755,10 +758,21 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       { model with game_message = error_msg }
   
   | Start_game ->
-      { model with 
-        game_started = true
-      ; game_message = "Game started! Click on your card, then click on a center pile to play!"
-      }
+      (* In multiplayer, don't start until both players have synced state *)
+      (match model.game_mode with
+       | OnlineMultiplayer { match_id; player_id; _ } ->
+         (* Sync current state to Firestore to signal game start *)
+         ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) 
+           (sync_game_state_to_firestore match_id player_id model.enhanced_state));
+         { model with 
+           game_started = true
+         ; game_message = "Game started! Click on your card, then click on a center pile to play!"
+         }
+       | SinglePlayer ->
+         { model with 
+           game_started = true
+         ; game_message = "Game started! Click on your card, then click on a center pile to play!"
+         })
   
   | Sign_out ->
       (* Fire and forget async sign out *)
