@@ -1328,12 +1328,6 @@ let app =
         in
         let () = Stdio.printf "*** STATE MACHINE: apply_action called with action: %s, current screen: %s, current auth_state: %s ***\n%!"
           action_str screen_str auth_str in
-          (match _model.screen with
-           | LoginScreen -> "LoginScreen"
-           | ProfileScreen -> "ProfileScreen"
-           | ModeSelectionScreen -> "ModeSelectionScreen"
-           | GameScreen -> "GameScreen")
-        in
         let new_model = apply_action action _model in
         let () = Stdio.printf "*** STATE MACHINE: After apply_action, new_model.screen: %s, auth_state: %s ***\n%!"
           (match new_model.screen with
