@@ -408,6 +408,7 @@ let start_matchmaking (uid : string) (inject : Action.t -> unit Effect.t) : unit
        let%bind _ = Firebase_bindings.Firestore.set_doc "matchmaking" opponent_matchmaking_id [
          ("status", Firebase_bindings.Firestore.string_to_js "matched")
        ; ("matchId", Firebase_bindings.Firestore.string_to_js match_id)
+       ; ("playerId", Firebase_bindings.Firestore.string_to_js opponent_id)
        ] in
        (* Trigger match found action - fire and forget *)
        ignore (inject (Action.Match_found { match_id; player_id = uid; opponent_id }));
