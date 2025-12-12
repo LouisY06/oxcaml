@@ -391,22 +391,20 @@
         };
         
         // ============================================================
-        // LOCAL STORAGE CHECK - Detect Saved Game
+        // LOCAL STORAGE CHECK - Clear Saved Game on Startup
         // ============================================================
-        // Check if there's a saved game state in localStorage on page load
-        // This is just for logging - the actual loading happens in OCaml
+        // Clear saved game state on page load to ensure we always start fresh
+        // This prevents old game states from interfering with the login screen
         window.addEventListener('load', () => {
             try {
-                // localStorage is a key-value store that persists across page reloads
-                // It's part of the Web Storage API (along with sessionStorage)
                 const saved = localStorage.getItem('speed_game_state');
                 if (saved) {
-                    console.log('Saved game found in local storage');
-                    // The OCaml code will automatically load this on app initialization
+                    console.log('Clearing saved game from local storage (starting fresh)');
+                    localStorage.removeItem('speed_game_state');
                 }
             } catch (e) {
                 // localStorage may be disabled or unavailable (e.g., private browsing)
-                console.log('Could not check for saved game:', e);
+                console.log('Could not clear saved game:', e);
             }
         });
         

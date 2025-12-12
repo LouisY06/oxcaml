@@ -192,32 +192,9 @@ module LocalStorage = struct
      exists or if loading fails.
   *)
   let load () : Model.t option =
-    try
-      (* Step 1: Access browser's localStorage *)
-      match Js.Optdef.to_option Dom_html.window##.localStorage with
-      | None -> None (* localStorage not available *)
-      | Some storage ->
-        (* Step 2: Retrieve the stored string value *)
-        let key = Js.string storage_key in
-        match Js.Opt.to_option (storage##getItem key) with
-        | None -> None (* No saved game found *)
-        | Some value ->
-          (* Step 3: Convert string back to S-expression *)
-          let json_str = Js.to_string value in
-          (* Parse the S-expression string *)
-          let sexp = Parsexp.Single.parse_string_exn json_str in
-          
-          (* Step 4: Deserialize S-expression back to OCaml Model.t *)
-          let model = Model.t_of_sexp sexp in
-          
-          (* Log success for debugging *)
-          let () = Stdio.printf "Game loaded from local storage\n%!" in
-          Some model
-    with
-    | _ -> 
-      (* If deserialization fails (corrupted data, version mismatch, etc.) *)
-      let () = Stdio.printf "Failed to load game from local storage\n%!" in
-      None
+    (* Don't auto-load saved games - user must explicitly load via Load_saved_game action *)
+    (* This ensures we always start on the login screen *)
+    None
   
   (* ============================================================
      CLEAR - Remove saved game state from Local Storage
