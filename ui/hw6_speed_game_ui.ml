@@ -1711,10 +1711,11 @@ module Components = struct
       | Model.ModeSelectionScreen -> mode_selection_screen model inject
       | Model.GameScreen ->
       (* Game screen *)
-      (* Show lobby code if we're waiting in a lobby *)
+      (* Show lobby code if we're waiting in a lobby (hide when opponent joins) *)
       let lobby_code_html =
-        match model.created_lobby_code with
-        | Some code when not model.game_started ->
+        match model.created_lobby_code, model.game_mode with
+        | Some code, OnlineMultiplayer { opponent_id; _ } when String.is_empty opponent_id && not model.game_started ->
+          (* Show banner only if waiting for opponent (opponent_id is empty) *)
           Node.div
             ~attrs:[ Attr.create "style" "position: fixed; top: 30px; left: 50%; transform: translateX(-50%); background: #000000; color: white; padding: 20px 40px; border-radius: 8px; z-index: 1000; text-align: center; min-width: 350px;" ]
             [ Node.div
