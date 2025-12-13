@@ -282,9 +282,12 @@ function handleNewGameReady(ws, data) {
   if (lobby.hostNewGameReady && lobby.joinerNewGameReady) {
     console.log(`Starting new game in lobby ${lobbyCode} - both players ready!`);
 
-    // Reset ready flags for next game
+    // Reset ALL ready flags for next game
     lobby.hostNewGameReady = false;
     lobby.joinerNewGameReady = false;
+    lobby.hostReady = false;
+    lobby.joinerReady = false;
+    lobby.gameStarted = false;
 
     const newGameStartMsg = JSON.stringify({
       type: 'new_game_start'

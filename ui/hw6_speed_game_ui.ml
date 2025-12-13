@@ -988,10 +988,12 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
       (match msg_type with
        | Some "lobby_created" ->
            let lobby_code = Websocket_bindings.get_string_field msg "lobbyCode" |> Option.value ~default:"" in
+           let user_id = Websocket_bindings.get_string_field msg "userId" |> Option.value ~default:"" in
            let () = Stdio.printf "*** WS: Lobby created: %s ***\n%!" lobby_code in
            { model with
              screen = GameScreen
            ; created_lobby_code = Some lobby_code
+           ; game_mode = OnlineMultiplayer { match_id = ""; player_id = user_id; opponent_id = ""; player_number = Player1 }
            ; game_message = Printf.sprintf "Waiting for opponent... Lobby Code: %s" lobby_code
            ; game_started = false
            }
@@ -1714,7 +1716,7 @@ module Components = struct
       (* Show lobby code if we're waiting in a lobby (hide when opponent joins) *)
       let lobby_code_html =
         match model.created_lobby_code, model.game_mode with
-        | Some code, OnlineMultiplayer { opponent_id; _ } when String.is_empty opponent_id && not model.game_started ->
+        | Some code, OnlineMultiplayer { opponent_id; _ } when String.is_empty opponent_id ->
           (* Show banner only if waiting for opponent (opponent_id is empty) *)
           Node.div
             ~attrs:[ Attr.create "style" "position: fixed; top: 30px; left: 50%; transform: translateX(-50%); background: #000000; color: white; padding: 20px 40px; border-radius: 8px; z-index: 1000; text-align: center; min-width: 350px;" ]
