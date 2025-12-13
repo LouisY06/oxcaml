@@ -8,15 +8,15 @@ const wss = new WebSocket.Server({ port: PORT });
 const lobbies = new Map(); // lobbyCode -> { hostId, hostWs, joinerId, joinerWs, matchId, gameState }
 const connections = new Map(); // ws -> { userId, lobbyCode }
 
-console.log(`🚀 WebSocket server running on port ${PORT}`);
+console.log(`WebSocket server running on port ${PORT}`);
 
 wss.on('connection', (ws) => {
-  console.log('📱 New client connected');
+  console.log('New client connected');
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      console.log('📨 Received:', data.type, data);
+      console.log('Received:', data.type, data);
 
       handleMessage(ws, data);
     } catch (error) {
@@ -26,7 +26,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('👋 Client disconnected');
+    console.log('Client disconnected');
     handleDisconnect(ws);
   });
 
@@ -82,7 +82,7 @@ function handleCreateLobby(ws, data) {
   lobbies.set(lobbyCode, lobby);
   connections.set(ws, { userId, lobbyCode });
 
-  console.log(`🏠 Lobby created: ${lobbyCode} by ${userId}`);
+  console.log(`Lobby created: ${lobbyCode} by ${userId}`);
 
   // Send response to host
   ws.send(JSON.stringify({
@@ -130,7 +130,7 @@ function handleJoinLobby(ws, data) {
   const matchId = `match_${lobby.hostId}_${userId}`;
   lobby.matchId = matchId;
 
-  console.log(`🤝 ${userId} joined lobby ${lobbyCode}, match: ${matchId}`);
+  console.log(`${userId} joined lobby ${lobbyCode}, match: ${matchId}`);
 
   // Notify joiner
   ws.send(JSON.stringify({
@@ -170,10 +170,10 @@ function handlePlayerReady(ws, data) {
   // Mark player as ready
   if (playerId === lobby.hostId) {
     lobby.hostReady = true;
-    console.log(`✅ Host ${playerId} is ready in lobby ${lobbyCode}`);
+    console.log(`Host ${playerId} is ready in lobby ${lobbyCode}`);
   } else if (playerId === lobby.joinerId) {
     lobby.joinerReady = true;
-    console.log(`✅ Joiner ${playerId} is ready in lobby ${lobbyCode}`);
+    console.log(`Joiner ${playerId} is ready in lobby ${lobbyCode}`);
   }
 
   // Notify both players about ready status
@@ -193,7 +193,7 @@ function handlePlayerReady(ws, data) {
   // If both players are ready and game hasn't started, start the game
   if (lobby.hostReady && lobby.joinerReady && !lobby.gameStarted) {
     lobby.gameStarted = true;
-    console.log(`🎮 Game starting in lobby ${lobbyCode} - both players ready!`);
+    console.log(`Game starting in lobby ${lobbyCode} - both players ready!`);
 
     const gameStartMsg = JSON.stringify({
       type: 'game_started'
@@ -221,7 +221,7 @@ function handleGameStateUpdate(ws, data) {
   // Update stored game state
   lobby.gameState = gameState;
 
-  console.log(`🎯 Game state update from ${playerId} in lobby ${lobbyCode}`);
+  console.log(`Game state update from ${playerId} in lobby ${lobbyCode}`);
 
   // Broadcast to opponent
   const message = JSON.stringify({
@@ -246,7 +246,7 @@ function handleDisconnect(ws) {
   const lobby = lobbies.get(lobbyCode);
 
   if (lobby) {
-    console.log(`👋 ${userId} disconnected from lobby ${lobbyCode}`);
+    console.log(`${userId} disconnected from lobby ${lobbyCode}`);
 
     // Notify opponent
     const opponentWs = lobby.hostWs === ws ? lobby.joinerWs : lobby.hostWs;
@@ -284,7 +284,7 @@ setInterval(() => {
 
   for (const [code, lobby] of lobbies.entries()) {
     if (now - lobby.createdAt > fiveMinutes && !lobby.joinerId) {
-      console.log(`🧹 Cleaning up old lobby: ${code}`);
+      console.log(`Cleaning up old lobby: ${code}`);
       lobbies.delete(code);
     }
   }

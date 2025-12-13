@@ -1388,65 +1388,61 @@ module Components = struct
    let login_screen (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Vdom in
           Node.div
-        ~attrs:[ Attr.create "class" "login-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
+        ~attrs:[ Attr.create "class" "login-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #ffffff;" ]
         [ Node.div
-            ~attrs:[ Attr.create "class" "login-form"; Attr.create "id" "login-form-id"; Attr.create "style" "padding: 40px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; background: rgba(255,255,255,0.95); box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 350px;" ]
-            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 10px; color: #333; font-size: 32px;" ] [ Node.text "🎮 Speed Card Game" ]
-            ; Node.h2 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 30px; color: #666; font-size: 18px; font-weight: normal;" ] [ Node.text "Sign In / Sign Up" ]
+            ~attrs:[ Attr.create "class" "login-form"; Attr.create "id" "login-form-id"; Attr.create "style" "padding: 60px 40px; min-width: 400px; max-width: 500px;" ]
+            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 40px; color: #000000; font-size: 36px; font-weight: 400;" ] [ Node.text "Login" ]
             ; Node.div
                 ~attrs:[ Attr.create "role" "form"; Attr.create "style" "margin: 0;" ]
                 [ Node.div
-                    ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
-                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Email" ]
+                    ~attrs:[ Attr.create "style" "margin-bottom: 30px;" ]
+                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 8px; font-weight: 400; color: #666666; font-size: 14px;" ] [ Node.text "Email" ]
                 ; Node.input
                     ~attrs:
                       [ Attr.create "type" "email"
                       ; Attr.create "value" model.login_email
-                          ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
+                          ; Attr.create "style" "padding: 12px 16px; width: 100%; border: none; border-bottom: 1px solid #e0e0e0; font-size: 16px; box-sizing: border-box; outline: none; background: #f5f5f5; border-radius: 4px;"
                       ; Attr.on_input (fun _ text -> inject (Action.Update_login_email text))
                       ]
                         ()
                 ]
             ; Node.div
-                    ~attrs:[ Attr.create "style" "margin: 15px 0;" ]
-                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Password" ]
+                    ~attrs:[ Attr.create "style" "margin-bottom: 40px;" ]
+                    [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 8px; font-weight: 400; color: #666666; font-size: 14px;" ] [ Node.text "Password" ]
                 ; Node.input
                     ~attrs:
                       [ Attr.create "type" "password"
                       ; Attr.create "value" model.login_password
                           ; Attr.create "form" "login-form-id"
-                          ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;"
+                          ; Attr.create "style" "padding: 12px 16px; width: 100%; border: none; border-bottom: 1px solid #e0e0e0; font-size: 16px; box-sizing: border-box; outline: none; background: #f5f5f5; border-radius: 4px;"
                       ; Attr.on_input (fun _ text -> inject (Action.Update_login_password text))
                       ]
                         ()
                 ]
-            ; Node.div
-                    ~attrs:[ Attr.create "style" "margin: 20px 0 10px 0; display: flex; gap: 10px;" ]
-                [ Node.button
+            ; Node.button
                     ~attrs:
                           [ Attr.create "type" "button"
-                          ; on_click (fun _ -> 
+                          ; on_click (fun _ ->
                               let () = Stdio.printf "*** BUTTON CLICKED: Sign In button was clicked! ***\n%!" in
                               let effect = inject Action.Sign_in in
                               let () = Stdio.printf "*** Effect created from inject Action.Sign_in ***\n%!" in
                               effect)
                           ; Attr.create "id" "sign-in-button"
-                          ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
+                          ; Attr.create "style" "width: 100%; padding: 16px; cursor: pointer; background: #000000; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 500; margin-bottom: 10px;"
                           ]
-                        [ Node.text "✅ Sign In" ]
-                ; Node.button
+                        [ Node.text "Login" ]
+            ; Node.button
                     ~attrs:
                           [ Attr.create "type" "button"
-                          ; on_click (fun _ -> 
+                          ; on_click (fun _ ->
                               let () = Stdio.printf "*** BUTTON CLICKED: Sign Up button was clicked! ***\n%!" in
                               let effect = inject Action.Sign_up in
                               let () = Stdio.printf "*** Effect created from inject Action.Sign_up ***\n%!" in
                               effect)
                           ; Attr.create "id" "sign-up-button"
-                          ; Attr.create "style" "flex: 1; padding: 14px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2);"
+                          ; Attr.create "style" "width: 100%; padding: 16px; cursor: pointer; background: #f5f5f5; color: #000000; border: none; border-radius: 8px; font-size: 16px; font-weight: 500;"
                           ]
-                        [ Node.text "📝 Sign Up" ]
-                    ]
+                        [ Node.text "Sign Up" ]
                 ; (if not (String.is_empty model.game_message) && (String.equal model.game_message "Signing in..." || String.equal model.game_message "Creating account...") then
                     Node.div ~attrs:[ Attr.create "style" "margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; text-align: center; color: #1976d2;" ] [ Node.text model.game_message ]
                   else if not (String.is_empty model.game_message) then
@@ -1466,7 +1462,7 @@ module Components = struct
            | Some code ->
              Node.div
                ~attrs:[ Attr.create "style" "position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 1000; text-align: center; min-width: 300px;" ]
-               [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "🎮 Your Lobby Code" ]
+               [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "Your Lobby Code" ]
                ; Node.div
                    ~attrs:[ Attr.create "style" "font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 10px 0; font-family: monospace;" ]
                    [ Node.text code ]
@@ -1485,7 +1481,7 @@ module Components = struct
                          else
                            inject (Action.Update_login_error "Clipboard not available"))
                      ]
-                   [ Node.text "📋 Copy Code" ]
+                   [ Node.text "Copy Code" ]
                ]
            | None -> Node.div [])
         ; Node.div
@@ -1507,7 +1503,7 @@ module Components = struct
                           [ on_click (fun _ -> inject Action.Create_lobby)
                           ; Attr.create "style" "padding: 15px 30px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
                           ]
-                        [ Node.text "🎮 Create Lobby" ]
+                        [ Node.text "Create Lobby" ]
                     ; Node.div
                         ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
                         [ Node.text "━━━ or ━━━" ]
@@ -1679,7 +1675,7 @@ module Components = struct
         | Some code when not model.game_started ->
           Node.div
             ~attrs:[ Attr.create "style" "position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 1000; text-align: center; min-width: 300px;" ]
-            [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "🎮 Lobby Code" ]
+            [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "Lobby Code" ]
             ; Node.div
                 ~attrs:[ Attr.create "style" "font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 10px 0; font-family: monospace;" ]
                 [ Node.text code ]
@@ -1698,7 +1694,7 @@ module Components = struct
                       else
                         inject (Action.Update_login_error "Clipboard not available"))
                   ]
-                [ Node.text "📋 Copy Code" ]
+                [ Node.text "Copy Code" ]
             ]
         | _ -> Node.div []
       in
