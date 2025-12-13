@@ -1456,22 +1456,21 @@ module Components = struct
    let mode_selection_screen (model : Model.t) (inject : Action.t -> unit Effect.t) =
       let open Vdom in
           Node.div
-        ~attrs:[ Attr.create "class" "mode-selection-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" ]
+        ~attrs:[ Attr.create "class" "mode-selection-screen"; Attr.create "style" "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #ffffff;" ]
         [ (* Display lobby code if one was created *)
           (match model.created_lobby_code with
            | Some code ->
              Node.div
-               ~attrs:[ Attr.create "style" "position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4CAF50; color: white; padding: 20px 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 1000; text-align: center; min-width: 300px;" ]
-               [ Node.h2 ~attrs:[ Attr.create "style" "margin: 0 0 10px 0; font-size: 18px; font-weight: bold;" ] [ Node.text "Your Lobby Code" ]
+               ~attrs:[ Attr.create "style" "position: fixed; top: 30px; left: 50%; transform: translateX(-50%); background: #000000; color: white; padding: 20px 40px; border-radius: 8px; z-index: 1000; text-align: center; min-width: 350px;" ]
+               [ Node.div
+                   ~attrs:[ Attr.create "style" "font-size: 14px; font-weight: 400; color: #999999; margin-bottom: 8px;" ]
+                   [ Node.text "Your Lobby Code" ]
                ; Node.div
-                   ~attrs:[ Attr.create "style" "font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 10px 0; font-family: monospace;" ]
+                   ~attrs:[ Attr.create "style" "font-size: 36px; font-weight: 500; letter-spacing: 6px; margin: 10px 0; font-family: monospace;" ]
                    [ Node.text code ]
-               ; Node.div
-                   ~attrs:[ Attr.create "style" "font-size: 14px; margin-top: 10px; opacity: 0.9;" ]
-                   [ Node.text "Share this code with your friend to play together!" ]
                ; Node.button
                    ~attrs:
-                     [ Attr.create "style" "margin-top: 15px; padding: 10px 20px; background: white; color: #4CAF50; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
+                     [ Attr.create "style" "margin-top: 12px; padding: 8px 24px; background: #ffffff; color: #000000; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;"
                      ; on_click (fun _ ->
                          (* Copy code to clipboard using JavaScript *)
                          let copy_code_js = Js.Unsafe.global##.navigator##.clipboard in
@@ -1485,75 +1484,66 @@ module Components = struct
                ]
            | None -> Node.div [])
         ; Node.div
-            ~attrs:[ Attr.create "class" "mode-selection"; Attr.create "style" "padding: 40px; border: 2px solid #ddd; border-radius: 15px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.3); min-width: 400px; text-align: center;" ]
-            [ Node.h1 ~attrs:[ Attr.create "style" "margin-bottom: 30px; color: #333;" ] [ Node.text "Choose Game Mode" ]
+            ~attrs:[ Attr.create "class" "mode-selection"; Attr.create "style" "padding: 60px 40px; min-width: 400px; max-width: 500px; text-align: center;" ]
+            [ Node.h1 ~attrs:[ Attr.create "style" "text-align: center; margin-bottom: 50px; color: #000000; font-size: 36px; font-weight: 400;" ] [ Node.text "Choose Game Mode" ]
+            ; Node.button
+                ~attrs:
+                  [ on_click (fun _ -> inject Action.Select_single_player)
+                  ; Attr.create "style" "width: 100%; padding: 16px; cursor: pointer; background: #000000; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 500; margin-bottom: 16px;"
+                  ]
+                [ Node.text "Play Against AI" ]
+            ; Node.button
+                ~attrs:
+                  [ on_click (fun _ -> inject Action.Create_lobby)
+                  ; Attr.create "style" "width: 100%; padding: 16px; cursor: pointer; background: #f5f5f5; color: #000000; border: none; border-radius: 8px; font-size: 16px; font-weight: 500; margin-bottom: 32px;"
+                  ]
+                [ Node.text "Create Lobby" ]
             ; Node.div
-                ~attrs:[ Attr.create "style" "margin: 20px 0;" ]
-                [ Node.button
-                    ~attrs:
-                      [ on_click (fun _ -> inject Action.Select_single_player)
-                      ; Attr.create "style" "padding: 20px 40px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-                      ]
-                    [ Node.text "Play Against AI" ]
-                ; Node.div
-                    ~attrs:[ Attr.create "style" "margin: 20px 0; padding: 20px; background: #f5f5f5; border-radius: 10px;" ]
-                    [ Node.h2 ~attrs:[ Attr.create "style" "margin-bottom: 15px; color: #333; font-size: 16px;" ] [ Node.text "Multiplayer" ]
-                    ; Node.button
-                        ~attrs:
-                          [ on_click (fun _ -> inject Action.Create_lobby)
-                          ; Attr.create "style" "padding: 15px 30px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-                          ]
-                        [ Node.text "Create Lobby" ]
-                    ; Node.div
-                        ~attrs:[ Attr.create "style" "margin: 15px 0; text-align: center; color: #666; font-size: 14px;" ]
-                        [ Node.text "━━━ or ━━━" ]
-                    ; Node.div
-                        ~attrs:[ Attr.create "style" "margin-bottom: 10px;" ]
-                        [ Node.label ~attrs:[ Attr.create "style" "display: block; margin-bottom: 5px; font-weight: bold; color: #333;" ] [ Node.text "Enter Lobby Code" ]
-                        ; Node.input
-                            ~attrs:
-                              [ Attr.create "type" "text"
-                              ; Attr.create "value" model.lobby_code
-                              ; Attr.create "placeholder" "Enter 6-digit code"
-                              ; Attr.create "maxlength" "6"
-                              ; Attr.create "style" "padding: 10px; width: 100%; border: 2px solid #ddd; border-radius: 5px; font-size: 16px; text-transform: uppercase; letter-spacing: 2px; text-align: center; box-sizing: border-box;"
-                              ; Attr.on_input (fun _ text -> inject (Action.Update_lobby_code (String.uppercase text)))
-                              ]
-                              ()
-                        ]
-                    ; Node.button
-                        ~attrs:
-                          [ on_click (fun _ -> inject Action.Join_lobby)
-                          ; Attr.create "style" "padding: 15px 30px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-                          ]
-                        [ Node.text "🚪 Join Lobby" ]
-                    ]
-                ]
+                ~attrs:[ Attr.create "style" "margin: 30px 0 20px 0; text-align: center; color: #cccccc; font-size: 14px; font-weight: 400;" ]
+                [ Node.text "or join with code" ]
+            ; Node.input
+                ~attrs:
+                  [ Attr.create "type" "text"
+                  ; Attr.create "value" model.lobby_code
+                  ; Attr.create "placeholder" "XXXXXX"
+                  ; Attr.create "maxlength" "6"
+                  ; Attr.create "style" "padding: 12px 16px; width: 100%; border: none; font-size: 18px; text-transform: uppercase; letter-spacing: 4px; text-align: center; box-sizing: border-box; background: #f5f5f5; border-radius: 8px; margin-bottom: 12px; outline: none;"
+                  ; Attr.on_input (fun _ text -> inject (Action.Update_lobby_code (String.uppercase text)))
+                  ]
+                  ()
+            ; Node.button
+                ~attrs:
+                  [ on_click (fun _ -> inject Action.Join_lobby)
+                  ; Attr.create "style" "width: 100%; padding: 16px; cursor: pointer; background: #f5f5f5; color: #000000; border: none; border-radius: 8px; font-size: 16px; font-weight: 500;"
+                  ]
+                [ Node.text "Join Lobby" ]
             ; (match model.auth_state with
                | Model.Authenticated { email; _ } ->
                  Node.div
-                   ~attrs:[ Attr.create "style" "margin-top: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px;" ]
-                   [ Node.text (Printf.sprintf "Signed in as: %s" (Option.value email ~default:"User"))
-            ; Node.button
-                ~attrs:
-                  [ on_click (fun _ -> inject Action.Sign_out)
-                         ; Attr.create "style" "margin-left: 10px; padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
-                  ]
-                [ Node.text "Sign Out" ]
-            ]
+                   ~attrs:[ Attr.create "style" "margin-top: 60px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center;" ]
+                   [ Node.div
+                       ~attrs:[ Attr.create "style" "font-size: 14px; color: #666666; margin-bottom: 12px;" ]
+                       [ Node.text (Option.value email ~default:"User") ]
+                   ; Node.button
+                       ~attrs:
+                         [ on_click (fun _ -> inject Action.Sign_out)
+                         ; Attr.create "style" "padding: 8px 24px; cursor: pointer; background: #ffffff; color: #666666; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 14px; font-weight: 400;"
+                         ]
+                       [ Node.text "Sign Out" ]
+                   ]
                | _ -> Node.div [])
             ; (if String.equal model.matchmaking_status "searching" then
-          Node.div
-                  ~attrs:[ Attr.create "style" "margin-top: 20px; padding: 15px; background: #fff3e0; border-radius: 5px; color: #e65100;" ]
+                 Node.div
+                   ~attrs:[ Attr.create "style" "margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px; color: #666666; text-align: center;" ]
                    [ Node.text "Searching for opponent... "
                    ; Node.button
                        ~attrs:
                          [ on_click (fun _ -> inject Action.Cancel_matchmaking)
-                        ; Attr.create "style" "margin-left: 10px; padding: 5px 15px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;"
+                         ; Attr.create "style" "margin-left: 10px; padding: 8px 16px; cursor: pointer; background: #000000; color: white; border: none; border-radius: 6px; font-size: 14px;"
                          ]
                        [ Node.text "Cancel" ]
                    ]
-              else Node.div [])
+               else Node.div [])
             ]
         ]
    
