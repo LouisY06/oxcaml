@@ -21,7 +21,7 @@ let websocket_url =
   let hostname = Dom_html.window##.location##.hostname |> Js.to_string in
   if String.equal hostname "localhost" || String.equal hostname "127.0.0.1"
   then "ws://localhost:8080"
-  else "wss://YOUR-APP-NAME.up.railway.app"  (* TODO: Replace with your Railway URL after deployment *)
+  else "wss://oxcaml-production.up.railway.app"
 
 module Model = struct
    type screen =
