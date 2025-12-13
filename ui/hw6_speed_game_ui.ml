@@ -16,8 +16,12 @@ module Deferred = Firebase_bindings.Deferred
 
 module Firebase_bindings = Firebase_bindings
 
-(* WebSocket server URL - change to production URL when deployed *)
-let websocket_url = "ws://localhost:8080"
+(* WebSocket server URL - automatically uses Railway URL when deployed to GitHub Pages *)
+let websocket_url =
+  let hostname = Dom_html.window##.location##.hostname |> Js.to_string in
+  if String.equal hostname "localhost" || String.equal hostname "127.0.0.1"
+  then "ws://localhost:8080"
+  else "wss://YOUR-APP-NAME.up.railway.app"  (* TODO: Replace with your Railway URL after deployment *)
 
 module Model = struct
    type screen =
