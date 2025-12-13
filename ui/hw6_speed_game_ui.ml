@@ -466,6 +466,18 @@ let ws_send_player_ready (ws : Websocket_bindings.websocket option) (lobby_code 
     ]
 ;;
 
+let ws_send_new_game_ready (ws : Websocket_bindings.websocket option) (lobby_code : string) (player_id : string) : unit =
+  match ws with
+  | None -> Stdio.printf "*** WebSocket not connected, cannot send new game ready ***\n%!"
+  | Some ws ->
+    let () = Stdio.printf "*** Sending new_game_ready via WebSocket ***\n%!" in
+    Websocket_bindings.send_json ws [
+      ("type", Js.Unsafe.inject (Js.string "new_game_ready"))
+    ; ("lobbyCode", Js.Unsafe.inject (Js.string lobby_code))
+    ; ("playerId", Js.Unsafe.inject (Js.string player_id))
+    ]
+;;
+
 (* Create a lobby with a code *)
 let create_lobby (uid : string) (inject : Action.t -> unit Effect.t) : unit Deferred.t =
   let open Deferred.Let_syntax in
@@ -782,19 +794,23 @@ let setup_firestore_listener (match_id : string) (player_id : string) (inject : 
 let apply_action (action : Action.t) (model : Model.t) : Model.t =
   match action with
   | New_game ->
-      let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
-      let new_model = { model with
-        enhanced_state = new_enhanced_state
-      ; selected_card = None
-      ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
-      } in
-      LocalStorage.clear (); (* Clear saved game when starting new *)
-      (* In multiplayer mode, sync to Firestore (async, fire and forget) *)
-      (match model.game_mode with
-       | OnlineMultiplayer { match_id; player_id; _ } ->
-          ignore (Deferred.bind ~f:(fun () -> Deferred.return ()) (sync_game_state_to_firestore match_id player_id new_enhanced_state));
+      (* In multiplayer, send new_game_ready to server; in single player, just start new game *)
+      (match model.game_mode, model.auth_state, model.created_lobby_code with
+       | OnlineMultiplayer _, Model.Authenticated { uid; _ }, Some lobby_code ->
+         (* Send new_game_ready message via WebSocket *)
+         ws_send_new_game_ready model.websocket lobby_code uid;
+         { model with game_message = "Waiting for both players to be ready for new game..." }
+       | SinglePlayer, _, _ ->
+         let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
+         let new_model = { model with
+           enhanced_state = new_enhanced_state
+         ; selected_card = None
+         ; game_message = "New game! You have 5 cards, 15 in draw pile. Play fast!"
+         ; game_started = false
+         } in
+         LocalStorage.clear (); (* Clear saved game when starting new *)
          new_model
-       | SinglePlayer -> new_model)
+       | _ -> model)
   
   | Load_saved_game ->
       (match LocalStorage.load () with
@@ -1034,6 +1050,42 @@ let apply_action (action : Action.t) (model : Model.t) : Model.t =
              game_started = true
            ; game_message = "Game started! Play your cards!"
            }
+       | Some "new_game_ready_status" ->
+           let host_ready = Websocket_bindings.get_bool_field msg "hostReady" |> Option.value ~default:false in
+           let joiner_ready = Websocket_bindings.get_bool_field msg "joinerReady" |> Option.value ~default:false in
+           let () = Stdio.printf "*** WS: New game ready status - host:%b joiner:%b ***\n%!" host_ready joiner_ready in
+           let ready_msg =
+             if host_ready && joiner_ready then
+               "Both players ready! Starting new game..."
+             else if host_ready then
+               "You are ready. Waiting for opponent..."
+             else if joiner_ready then
+               "Opponent is ready for new game. Click 'New Game' when ready!"
+             else
+               "Click 'New Game' when ready"
+           in
+           { model with game_message = ready_msg }
+       | Some "new_game_start" ->
+           let () = Stdio.printf "*** WS: New game starting! ***\n%!" in
+           (* Create a new game state with deterministic seed based on match_id *)
+           (match model.game_mode with
+            | OnlineMultiplayer { match_id; _ } ->
+              let seed = string_to_seed match_id in
+              let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create ~seed () in
+              { model with
+                enhanced_state = new_enhanced_state
+              ; selected_card = None
+              ; game_started = false
+              ; game_message = "New game created! Click 'Start Game' to begin!"
+              }
+            | SinglePlayer ->
+              let new_enhanced_state = Hw2_speed_logic.Enhanced_game_state.create () in
+              { model with
+                enhanced_state = new_enhanced_state
+              ; selected_card = None
+              ; game_started = false
+              ; game_message = "New game! Click 'Start Game' to begin!"
+              })
        | Some "error" ->
            let error_msg = Websocket_bindings.get_string_field msg "message" |> Option.value ~default:"Unknown error" in
            let () = Stdio.printf "*** WS Error: %s ***\n%!" error_msg in

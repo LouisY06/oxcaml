@@ -51,6 +51,9 @@ function handleMessage(ws, data) {
     case 'game_state_update':
       handleGameStateUpdate(ws, data);
       break;
+    case 'new_game_ready':
+      handleNewGameReady(ws, data);
+      break;
     case 'ping':
       ws.send(JSON.stringify({ type: 'pong' }));
       break;
@@ -76,6 +79,8 @@ function handleCreateLobby(ws, data) {
     hostReady: false,
     joinerReady: false,
     gameStarted: false,
+    hostNewGameReady: false,
+    joinerNewGameReady: false,
     createdAt: Date.now()
   };
 
@@ -235,6 +240,62 @@ function handleGameStateUpdate(ws, data) {
   }
   if (lobby.joinerWs && lobby.joinerWs !== ws && lobby.joinerWs.readyState === WebSocket.OPEN) {
     lobby.joinerWs.send(message);
+  }
+}
+
+function handleNewGameReady(ws, data) {
+  const { lobbyCode, playerId } = data;
+
+  const lobby = lobbies.get(lobbyCode);
+  if (!lobby) {
+    ws.send(JSON.stringify({
+      type: 'error',
+      message: 'Lobby not found'
+    }));
+    return;
+  }
+
+  // Mark player as ready for new game
+  if (playerId === lobby.hostId) {
+    lobby.hostNewGameReady = true;
+    console.log(`Host ${playerId} is ready for new game in lobby ${lobbyCode}`);
+  } else if (playerId === lobby.joinerId) {
+    lobby.joinerNewGameReady = true;
+    console.log(`Joiner ${playerId} is ready for new game in lobby ${lobbyCode}`);
+  }
+
+  // Notify both players about new game ready status
+  const newGameReadyStatusMsg = JSON.stringify({
+    type: 'new_game_ready_status',
+    hostReady: lobby.hostNewGameReady,
+    joinerReady: lobby.joinerNewGameReady
+  });
+
+  if (lobby.hostWs && lobby.hostWs.readyState === WebSocket.OPEN) {
+    lobby.hostWs.send(newGameReadyStatusMsg);
+  }
+  if (lobby.joinerWs && lobby.joinerWs.readyState === WebSocket.OPEN) {
+    lobby.joinerWs.send(newGameReadyStatusMsg);
+  }
+
+  // If both players are ready for new game, start new game
+  if (lobby.hostNewGameReady && lobby.joinerNewGameReady) {
+    console.log(`Starting new game in lobby ${lobbyCode} - both players ready!`);
+
+    // Reset ready flags for next game
+    lobby.hostNewGameReady = false;
+    lobby.joinerNewGameReady = false;
+
+    const newGameStartMsg = JSON.stringify({
+      type: 'new_game_start'
+    });
+
+    if (lobby.hostWs && lobby.hostWs.readyState === WebSocket.OPEN) {
+      lobby.hostWs.send(newGameStartMsg);
+    }
+    if (lobby.joinerWs && lobby.joinerWs.readyState === WebSocket.OPEN) {
+      lobby.joinerWs.send(newGameStartMsg);
+    }
   }
 }
 
